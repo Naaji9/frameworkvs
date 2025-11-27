@@ -1,0 +1,13 @@
+cd ~/FrameworkVS-3.0/backend
+uvicorn main:app --reload
+
+curl -X POST "http://127.0.0.1:8000/docking/generate-script" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ligands": ["data/ligands/ligand.pdbqt"],
+    "receptors": ["data/receptors/receptor.pdbqt"],
+    "box_center": [15.190, 53.903, 16.917],
+    "box_size": [20.000, 20.000, 20.000],
+    "exhaustiveness": 8
+  }'
+
