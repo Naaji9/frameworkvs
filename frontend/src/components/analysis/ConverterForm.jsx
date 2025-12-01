@@ -9,7 +9,7 @@ function formatDefaultOutputFolder() {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   const date = `${yyyy}-${mm}-${dd}`;
-  return `/home/$(user)/FrameworkVS_output/${date}`;
+  return ``;
 }
 
 export default function ConverterForm() {
@@ -341,9 +341,9 @@ export default function ConverterForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-gray-50 dark:bg-slate-900 space-y-8 max-w-4xl mx-auto p-8 rounded-2xl shadow-lg">
+    <form onSubmit={handleSubmit} className="max-w-4xl mx-auto p-8 bg-gray-200 rounded-2xl shadow-lg space-y-8 border border-blue-400g">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-slate-700">
+      <div className="flex items-center justify-between pb-4 border-b border-blue-200 dark:border-slate-700">
         <h2 className="text-4xl font-bold text-blue-700 dark:text-blue-400 tracking-tight">Converter</h2>
         <div className="flex items-center gap-3">
           <label htmlFor="dark-mode-toggle" className="text-sm font-medium text-gray-600 dark:text-gray-300">Dark Mode</label>
