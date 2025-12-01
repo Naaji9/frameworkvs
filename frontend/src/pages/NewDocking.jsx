@@ -861,15 +861,6 @@ useEffect(() => {
 
 
 
-
-
-
-
-
-
-
-
-
     const handleBoxFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1003,10 +994,10 @@ const handleGenerateScript = async () => {
       </p>
 
       <div className="bg-blue-50 p-3 rounded-md mb-4 text-sm text-gray-800 border border-blue-200">
-        <strong>➡ To GENERATE a docking script:</strong>
+        <strong>➡ To GENERATE a docking script (vsframework.py): </strong>
         <br />
         Make sure ALL paths are FULL absolute paths:
-        <br />• Ligand folder  
+        <br />• Ligand folder/file 
         <br />• Receptor folder/file  
         <br />• Output folder  
         <br />
