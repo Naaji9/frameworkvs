@@ -3,7 +3,7 @@ import axios from "axios";
 
  
 const instance = axios.create({
-    baseURL: "http://localhost:8000",   // <-- FastAPI port
+    baseURL: "https://backend-production-c40d.up.railway.app",   // <-- FastAPI port
   });
   
 export default instance;
