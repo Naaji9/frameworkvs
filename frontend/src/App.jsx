@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import './styles/globals.css'
 import Home from "./pages/Home";
@@ -8,7 +8,7 @@ import DocumentationPage from "./pages/DocumentationPage";
 
 function App() {
   return (
-    <Router>
+    <>
       <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
@@ -16,8 +16,9 @@ function App() {
         <Route path="/advanced-analysis" element={<AdvancedAnalysisPage />} /> 
         <Route path="/documentation" element={<DocumentationPage />} />
       </Routes>
-    </Router>
+    </>
   );
 }
 
 export default App;
+

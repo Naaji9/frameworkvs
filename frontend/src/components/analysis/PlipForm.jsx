@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import axios from "../../axios";
-import PlipPoseViewer from "./PlipPoseViewer.jsx";
+// import PlipPoseViewer from "./PlipPoseViewer.jsx";
 
 export default function PlipFormAdvanced() {
   const [recMode, setRecMode] = useState("path");
@@ -99,9 +99,9 @@ export default function PlipFormAdvanced() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="max-w-4xl mx-auto p-8 bg-white rounded-2xl shadow-lg space-y-8 border border-gray-200"
+      className="max-w-4xl mx-auto p-8 bg-gray-200 rounded-2xl shadow-lg space-y-8 border border-blue-400"
     >
-      <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
+      <h2 className="text-3xl font-bold text-black-900 tracking-tight">
         PLIP — Advanced Interaction Analysis
       </h2>
 
@@ -300,12 +300,12 @@ export default function PlipFormAdvanced() {
             </div>
           </div>
 
-          {/* 3D Pose Viewer */}
+          {/* 3D Pose Viewer
           {results.poses && results.poses.length > 0 && (
             <section className="mt-6">
               <PlipPoseViewer poses={results.poses} />
             </section>
-          )}
+          )} */}
         </section>
       )}
     </form>

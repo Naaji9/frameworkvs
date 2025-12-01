@@ -8,7 +8,9 @@ export default function NewDocking() {
     const receptorFileRef = useRef(null);
 
     const [basePath, setBasePath] = useState(localStorage.getItem("basePath") || "");
-    const [showBasePathModal, setShowBasePathModal] = useState(!localStorage.getItem("basePath"));
+    const [showBasePathModal, setShowBasePathModal] = useState(
+     !localStorage.getItem("hasSeenPathInfo")
+    );
 
 // we only need the arrays; if you still want a preview of “the first” file, you can derive it.
     const [ligandFiles,   setLigandFiles]   = useState([]);
@@ -221,6 +223,64 @@ const handleBlindDockingToggle = async (e) => {
   }
 };
 
+const cleanOutputPath = (path) => {
+  if (!path) return "";
+
+  // Remove illegal characters
+  let cleaned = path.replace(/[?@,\\]+/g, "");
+
+  // Replace multiple slashes with single slash
+  cleaned = cleaned.replace(/\/+/g, "/");
+
+  // Ensure absolute path starts with "/"
+  if (!cleaned.startsWith("/")) {
+    cleaned = "/" + cleaned;
+  }
+
+  return cleaned.trim();
+};
+
+const validateOutputFolder = () => {
+  let cleaned = cleanOutputPath(outputFolder);
+
+  // If cleaning changed it → auto-set the correction
+  if (cleaned !== outputFolder) {
+    setOutputFolder(cleaned);
+  }
+
+  // Now validate
+  if (!cleaned) {
+    setErrors((prev) => ({
+      ...prev,
+      outputFolder: "Please enter the full absolute output folder path.",
+    }));
+
+    scrollToOutput();
+    return false;
+  }
+
+  if (!cleaned.startsWith("/")) {
+    setErrors((prev) => ({
+      ...prev,
+      outputFolder: "Output path MUST start with '/'. Example: /home/user/results",
+    }));
+
+    scrollToOutput();
+    return false;
+  }
+
+  // Valid
+  setErrors((prev) => ({ ...prev, outputFolder: null }));
+  return true;
+};
+
+const scrollToOutput = () => {
+  const el = document.getElementById("output-section");
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+};
+
 
 const handleSubmit = async () => {
   if (!validateForm()) return;
@@ -405,6 +465,7 @@ const uploadFilesToLocalBackend = async () => {
 
 const handleRun = async () => {
   if (!validateForm()) return;
+  if (!validateOutputFolder()) return;
 
   setTerminalOutput([]);  // clear old logs
   setShowTerminal(true);  // show popup immediately
@@ -895,6 +956,7 @@ const installDependency = async (toolName) => {
 const handleGenerateScript = async () => {
   try {
     if (!validateForm()) return;
+    if (!validateOutputFolder()) return;
 
     setIsLoading(true);
 
@@ -930,51 +992,63 @@ const handleGenerateScript = async () => {
 
   return (
     <>
-      {showBasePathModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-black rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-xl font-bold mb-4 text-blue-700">📂 Set Your Base Directory</h3>
-            <p className="text-sm text-gray-500 mb-3">
-              Please enter the full folder path where your ligand and receptor files are stored.
-              We'll use this to construct the full file paths in the generated script.
-            </p>
-            <input
-              type="text"
-              className="w-full p-3 border border-gray-300 rounded-md mb-4"
-              value={basePath}
-              onChange={(e) => setBasePath(e.target.value)}
-              placeholder="/home/username/docking"
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              You can update this path anytime.
-            </p>
-            <div className="flex justify-end gap-4">
-              <button
-                className="bg-gray-300 px-4 py-2 rounded-md hover:bg-gray-400"
-                onClick={() => setShowBasePathModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-                onClick={handleBasePathConfirm}
-              >
-                {basePath.trim() ? "Update" : "Confirm"}
+{showBasePathModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+    <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
 
+      <h3 className="text-xl font-bold mb-4 text-blue-700">📘 Path Usage Information</h3>
 
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <p className="text-gray-700 text-sm mb-4">
+        Before using the docking tools, please read this:
+      </p>
+
+      <div className="bg-blue-50 p-3 rounded-md mb-4 text-sm text-gray-800 border border-blue-200">
+        <strong>➡ To GENERATE a docking script:</strong>
+        <br />
+        Make sure ALL paths are FULL absolute paths:
+        <br />• Ligand folder  
+        <br />• Receptor folder/file  
+        <br />• Output folder  
+        <br />
+        These will be written directly into your generated Python script.
+      </div>
+
+      <div className="bg-green-50 p-3 rounded-md mb-4 text-sm text-gray-800 border border-green-200">
+        <strong>➡ To RUN DOCKING NOW inside the website:</strong>
+        <br />
+        Only ensure the <strong>output folder path</strong> is a valid full absolute path.
+      </div>
+
+      <p className="text-xs text-gray-500 mb-4">
+        This information popup appears only on your first visit.  
+        You can reopen it anytime using “🔄 Path Usage Information”.
+      </p>
+
+      <div className="flex justify-end">
+        <button
+          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+          onClick={() => {
+            localStorage.setItem("hasSeenPathInfo", "true");
+            setShowBasePathModal(false);
+          }}
+        >
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
     {/* Change Path link - top right */}
     <div className="absolute top-24 right-8 z-10">
     <p
-      className="text-sm text-blue-600 cursor-pointer underline hover:text-blue-800"
-      onClick={resetBasePath}
+     className="text-sm text-blue-600 cursor-pointer underline hover:text-blue-800"
+     onClick={() => setShowBasePathModal(true)}
     >
-      🔄 Change Base Path
-    </p>
+     🔄 Path Usage Information
+   </p>
+
   </div>
     
     <div className="min-h-screen bg-gradient-to-br from-white to-blue-80 pt-28 pb-10 px-4">
@@ -1242,22 +1316,30 @@ const handleGenerateScript = async () => {
 )}
 
         {/* Output Folder */}
-        <div className="mb-8">
-          <div className="flex justify-between mb-2">
-            <label className="text-lg font-semibold text-blue-700"> Output Folder</label>
-            <span className="text-sm text-gray-500">Default: backend/outputs</span>
-          </div>
-          <input
-            type="text"
-            value={outputFolder}
-            onChange={(e) => setOutputFolder(e.target.value)}
-            placeholder="Output Result path"
-            className="w-full p-3 border rounded-md shadow-sm border-gray-300 focus:ring-2 focus:ring-blue-400"
-          />
-          {/* <div className="flex gap-3 mt-3">
-            <button className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm shadow hover:bg-gray-400">📂 Browse Folder</button>
-          </div> */}
-        </div>
+<div id="output-section" className="mb-8">
+  <div className="flex justify-between mb-2">
+    <label className="text-lg font-semibold text-blue-700">Output Folder</label>
+    <span className="text-sm text-gray-500">Full absolute path required</span>
+  </div>
+
+  <input
+    type="text"
+    value={outputFolder}
+    onChange={(e) => {
+      const cleaned = cleanOutputPath(e.target.value);
+      setOutputFolder(cleaned);
+    }}
+    placeholder="/home/username/results"
+    className={`w-full p-3 border rounded-md shadow-sm 
+      ${errors.outputFolder ? "border-red-500 bg-red-50" : "border-gray-300"} 
+      focus:ring-2 focus:ring-blue-400`}
+  />
+
+  {errors.outputFolder && (
+    <p className="text-red-500 text-sm mt-1">{errors.outputFolder}</p>
+  )}
+</div>
+
 
         {/* Grid Box */}
 <div className="mb-8 p-4 bg-gray-50 rounded-md border border-gray-200">
