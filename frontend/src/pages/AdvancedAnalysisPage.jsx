@@ -67,7 +67,7 @@ export default function AdvancedAnalysisPage() {
   return (
     <div className="bg-black-200 p-6 max-w-5xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Advanced Analysis</h1>
-
+      <span className="block mt-10 mb-6 text-4xl font-bold text-blue-700 dark:text-blue-400 tracking-tight"> Advanced Analysis Tools </span>
       {/* ---------------- CARD GRID ---------------- */}
       {!selectedAction && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-10 animate-fadeIn">
@@ -84,7 +84,7 @@ export default function AdvancedAnalysisPage() {
                 <span className="border-animation"></span>
               )}
 
-              <div className="h-40 bg-gray-200">
+              <div className="h-40 bg-gray-400">
                 <img
                   src={a.img}
                   alt={a.title}

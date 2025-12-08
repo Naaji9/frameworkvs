@@ -1,38 +1,28 @@
-
 # backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import docking, file_upload
-from api import docking, analysis, file_upload
-from api import docking  
-from api import convert
-from api import validate_path
 
-from routes import advanced_analysis
+from api import analysis, docking, file_upload, convert, validate_path
 from routes.advanced_analysis import router as advanced_router
-# from routes import analysis_routes
+
 app = FastAPI(title="FrameworkVS 3.0 Backend")
 
-# Allow frontend to connect
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], 
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-
+# Register routers
 app.include_router(analysis.router)
 app.include_router(file_upload.router, prefix="/files")
 app.include_router(docking.router, prefix="/docking")
 app.include_router(convert.router, prefix="/convert")
 app.include_router(validate_path.router)
-
-app.include_router(advanced_analysis.router) 
-# app.include_router(analysis_routes.router)
 app.include_router(advanced_router, prefix="/advanced")
+
 @app.get("/")
 def read_root():
     return {"message": "FrameworkVS 3.0 Backend is running!"}

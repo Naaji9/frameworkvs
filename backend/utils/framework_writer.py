@@ -111,7 +111,7 @@ receptors = convert_all(load_receptors(receptor_folder))
 
 # === Vina Command & Output ===
 def vina_command(ligand, receptor, center_str, output_dir):
-    out_file = os.path.join(output_dir, f"{{os.path.basename(receptor)[:3]}}_{{os.path.splitext(os.path.basename(ligand))[0]}}_{{center_str}}.pdbqt")
+    out_file = os.path.join(output_dir, f"{{os.path.basename(receptor)[:10]}}_{{os.path.splitext(os.path.basename(ligand))[0]}}_{{center_str}}.pdbqt")
     return [
         "vina",
         "--ligand", ligand,

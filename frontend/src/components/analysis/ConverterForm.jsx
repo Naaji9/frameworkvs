@@ -345,6 +345,8 @@ export default function ConverterForm() {
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-blue-200 dark:border-slate-700">
         <h2 className="text-4xl font-bold text-blue-700 dark:text-blue-400 tracking-tight">Converter</h2>
+        <span> Please install using this command: pip install autodocktools </span>
+
         <div className="flex items-center gap-3">
           <label htmlFor="dark-mode-toggle" className="text-sm font-medium text-gray-600 dark:text-gray-300">Dark Mode</label>
           <input

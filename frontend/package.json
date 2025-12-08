@@ -9,7 +9,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start-all": "concurrently \"cd ../backend && bash -c 'source venv/bin/activate && uvicorn main:app --reload'\" \"vite\"",
+    "start-all": "concurrently \"cd ../backend && ../backend/venv/bin/python -m uvicorn main:app --reload\" \"vite\"",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },

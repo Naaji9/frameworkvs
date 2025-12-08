@@ -1,0 +1,30 @@
+How to “install” from that source
+
+Here’s a plan to integrate those scripts into your converter:
+
+Clone (or download ZIP of) the FlipbookApp repository:
+
+git clone https://github.com/MolecularFlipbook/FlipbookApp.git
+
+
+Locate the ADT scripts:
+
+FlipbookApp/mfb/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_receptor4.py  
+FlipbookApp/mfb/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_ligand4.py
+
+
+Copy them into a directory included in your PATH (or into your project).
+For example:
+
+mkdir -p ~/adt_scripts
+cp FlipbookApp/mfb/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_*.py ~/adt_scripts/
+chmod +x ~/adt_scripts/prepare_*.py
+
+
+Add that folder to your PATH (or call with full path in your code). For example, in ~/.bashrc:
+
+export PATH=$PATH:~/adt_scripts
+
+
+Then your which_exists("prepare_receptor4.py") will succeed.
+And your backend can call them.
