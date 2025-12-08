@@ -427,6 +427,57 @@ def safe_run(cmd, cwd=None):
         raise Exception(f"Failed: {' '.join(cmd)}\\n{p.stderr}")
     return p.stdout
 
+def remove_smiles_from_pdb(pdb_path):
+    """Remove SMILES strings from PDB file"""
+    temp_path = pdb_path + ".tmp"
+    lines_kept = 0
+    lines_removed = 0
+    
+    try:
+        with open(pdb_path, "r") as infile, open(temp_path, "w") as outfile:
+            for line in infile:
+                stripped = line.strip()
+                
+                # Check for SMILES notation patterns
+                # Pattern 1: Lines starting with "SMILES" or "smiles:"
+                # Pattern 2: Lines with stereochemistry markers [C@@H] or [C@H]
+                # Pattern 3: Lines that look like long chemical notation (no spaces, lots of brackets/parentheses)
+                is_smiles = False
+                
+                if stripped.startswith("SMILES") or stripped.lower().startswith("smiles:"):
+                    is_smiles = True
+                elif "[C@@H]" in line or "[C@H]" in line or "[@" in line:
+                    # Contains stereochemistry notation typical of SMILES
+                    is_smiles = True
+                elif stripped and not stripped.startswith(("ATOM", "HETATM", "TER", "END", "MODEL", "ENDMDL", "CONECT", "REMARK", "HEADER", "TITLE", "CRYST")):
+                    # Check if it's a long string with many brackets/parentheses and few spaces
+                    if len(stripped) > 50 and stripped.count("(") + stripped.count("[") > 5 and stripped.count(" ") < 3:
+                        is_smiles = True
+                
+                if is_smiles:
+                    lines_removed += 1
+                    print(f"  → Removing SMILES line: {stripped[:80]}{'...' if len(stripped) > 80 else ''}")
+                    continue
+                    
+                outfile.write(line)
+                lines_kept += 1
+        
+        # Replace original file with cleaned version
+        shutil.move(temp_path, pdb_path)
+        
+        if lines_removed > 0:
+            print(f"  ✓ Removed {lines_removed} SMILES lines from PDB")
+        else:
+            print(f"  ✓ No SMILES lines found in PDB")
+        
+        return True
+    except Exception as e:
+        print(f"  ⚠ Warning: Could not clean SMILES from PDB: {e}")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return False
+
+
 def split_pdbqt_models(src, out_dir):
     """Split multi-model PDBQT into individual pose files"""
     poses = []
@@ -457,6 +508,8 @@ def merge_pdbqt(rec, lig, outp):
     with open(outp, "w") as out:
         out.write(open(rec).read())
         out.write(open(lig).read())
+
+
 
 def parse_plip_xml(xml_path, output_dir):
     """Parse PLIP XML output and create CSV/JSON files"""
@@ -512,7 +565,19 @@ def parse_plip_xml(xml_path, output_dir):
         if all_interactions:
             # Combined CSV
             csv_path = os.path.join(output_dir, 'interactions_all.csv')
-            keys = sorted(set(k for d in all_interactions for k in d.keys()))
+            preferred_order = [
+                                'interaction_type', 'dist', 'dist_d-a', 'dist_h-a', 'don_angle', 'donoridx',
+                                'donortype', 'restype', 'resnr', 'acceptoridx', 'acceptortype',
+            ]
+            # Collect all keys that exist in the data
+            all_keys = sorted(set(k for d in all_interactions for k in d.keys()))
+
+            # Generate final ordered list
+            ordered_keys = [k for k in preferred_order if k in all_keys] + \
+                           [k for k in all_keys if k not in preferred_order]
+
+            keys = ordered_keys
+
             with open(csv_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=keys)
                 writer.writeheader()
@@ -602,7 +667,10 @@ def main():
         
         # Convert to PDB format
         safe_run(["obabel", merge_path, "-O", complex_path], cwd=pose_dir)
-        
+        # CRITICAL: Remove SMILES strings from complex.pdb before PLIP
+        print(f"  Cleaning SMILES from complex.pdb...")
+        remove_smiles_from_pdb(complex_path)       
+
         # Run PLIP analysis
         plip_cmd = ["plip", "-f", complex_path, "-x", "-t", "-y", "--nohydro", "--nofixfile", "--nofix"]
         try:
@@ -734,5 +802,5 @@ def plip_health():
         "status": "healthy", 
         "service": "PLIP", 
         "version": "2.0.0",
-        "features": ["parallel_processing", "multi_receptor_ligand"]
+        "features": ["parallel_processing", "multi_receptor_ligand", "smiles_removal"]
     }

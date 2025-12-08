@@ -220,7 +220,7 @@ export default function PlipFormOnline() {
       
       console.log(`[${viewerId}] Element found, dimensions: ${element.offsetWidth}x${element.offsetHeight}`);
 
-      const config = { backgroundColor: 'lightblue' };
+      const config = { backgroundColor: 'black' };
       const viewer = window.$3Dmol.createViewer(element, config);
       
       if (!viewer) {
@@ -231,56 +231,123 @@ export default function PlipFormOnline() {
 
       // Add protein structure
       const model = viewer.addModel(pdbData, "pdb");
+      
       console.log(`[${viewerId}] Model added, atoms: ${model.selectedAtoms({}).length}`);
-      
-      // Count ligand atoms (UNL is the standard ligand residue name in PLIP output)
-      const ligandAtoms = model.selectedAtoms({ resn: 'UNL' });
-      console.log(`[${viewerId}] Ligand atoms found: ${ligandAtoms.length}`);
-      
-      if (ligandAtoms.length === 0) {
-        console.warn(`[${viewerId}] WARNING: No ligand atoms found! Check PDB file`);
+
+// ===================== SCIENTIFIC LIGAND DETECTION =====================
+
+// Step 1: Try canonical PLIP ligand first
+let ligandAtoms = model.selectedAtoms({ resn: 'UNL' });
+
+// Step 2: If not found, perform scientific chemical detection
+if (ligandAtoms.length === 0) {
+  ligandAtoms = model.selectedAtoms({
+    and: [
+      { hetflag: true },         // must be hetero atoms (HETATM)
+      { resn: { ne: 'HOH' } },   // exclude water
+      { elem: { ne: 'H' } }      // exclude pure hydrogens
+    ]
+  });
+}
+
+// Step 3: Scientifically exclude non-relevant residues
+const EXCLUDED = new Set([
+  // Solvents
+  'HOH','WAT','DMS','PEG','MPD','ACT','SO4','GOL',
+
+  // Ions
+  'NA','K','CL','CA','MG','ZN','FE','MN','CU','CO','NI',
+
+  // Buffers
+  'TRS','HEP','MES','PO4','CIT',
+
+  // Common cofactors
+  'HEM','FAD','FMN','NAD','NADP','SAM','SAH'
+]);
+
+ligandAtoms = ligandAtoms.filter(a =>
+  a.resn && !EXCLUDED.has(a.resn)
+);
+
+// Step 4: Filter chemically meaningless junk via atom count
+const residueCounts = {};
+ligandAtoms.forEach(atom => {
+  residueCounts[atom.resn] = (residueCounts[atom.resn] || 0) + 1;
+});
+
+// Real ligands must have >= 6 heavy atoms
+const LIGANDS = new Set(
+  Object.entries(residueCounts)
+    .filter(([_, count]) => count >= 6)
+    .map(([resn]) => resn)
+);
+
+ligandAtoms = ligandAtoms.filter(atom =>
+  LIGANDS.has(atom.resn)
+);
+
+// Debug log for scientific verification
+console.log(`[${viewerId}] Scientifically detected ligands:`,
+  Array.from(LIGANDS).join(', ') || 'none');
+
+console.log(`[${viewerId}] Ligand atom count:`, ligandAtoms.length);
+
+if (ligandAtoms.length === 0) {
+  console.warn(`[${viewerId}] WARNING: No valid ligand detected.`);
+}
+
+// ===================== SCIENTIFIC VISUALIZATION =====================
+
+// 1) Protein full structure: visible cartoon for spatial context
+viewer.setStyle(
+  {}, // everything default (entire receptor/protein)
+  {
+    cartoon: {
+      color: 'lightblue',
+      opacity: 0.7  // Much more visible now
+    }
+  }
+);
+
+// 2) Highlight binding pocket residues (≤ 5 Å from ligand) with sticks
+if (ligandAtoms.length > 0) {
+  viewer.setStyle(
+    {
+      within: {
+        distance: 5,
+        sel: { resn: Array.from(LIGANDS) }
       }
-      
-      // Style: Show ONLY binding pocket residues (within 5Å of ligand) as sticks
-     // Layer 1: Show entire protein as transparent cartoon for context
-      viewer.setStyle({ resn: { ne: 'UNL' } }, { 
-        cartoon: { 
-          color: 'lightgray',
-          opacity: 0.3
-        } 
-      });
-      
-      // Layer 2: Highlight binding pocket residues (within 5Å) with sticks
-      viewer.setStyle({ resn: { ne: 'UNL' }, within: { distance: 5, sel: { resn: 'UNL' } } }, { 
-        cartoon: {
-          color: 'spectrum',
-          opacity: 0.7
-        },
-        stick: { 
-          radius: 0.25, 
-          colorscheme: 'Jmol' 
-        } 
-      });
-      
-      // Layer 3: Ligand - BRIGHT GREEN for maximum visibility
-      viewer.setStyle({ resn: 'UNL' }, { 
-        stick: { 
-          radius: 0.4, 
-          color: 'lime'
-        },
-        sphere: {
-          radius: 0.5,
-          color: 'green'
-        }
-      });
-      
-      console.log(`[${viewerId}] Styles applied`);
+    },
+    {
+      cartoon: { color: 'lightblue', opacity: 0.7 },  // Keep cartoon
+      stick: { radius: 0.25, colorscheme: 'Jmol' }    // Add sticks on top
+    }
+  );
+}
+
+// 3) Ligand itself (scientific ball-and-stick)
+if (ligandAtoms.length > 0) {
+  viewer.setStyle(
+    { resn: Array.from(LIGANDS) },
+    {
+      stick: { radius: 0.4, color: 'orange' },
+      sphere: { radius: 0.5, color: 'red' }
+    }
+  );
+}
+
+// 4) Smart camera zoom
+if (ligandAtoms.length > 0) {
+  viewer.zoomTo({ resn: Array.from(LIGANDS) });
+} else {
+  viewer.zoomTo();
+}
 
       // Highlight interactions with scientific colors matching PLIP diagram
       const interactionStyles = {
-        'Hydrogen Bonds': { color: 'blue', radius: 0.10, dashed: true },
+        'Hydrogen Bonds': { color: 'blue', radius: 0.08, dashed: true },
         'Hydrophobic Interactions': { color: 'gray', radius: 0.08, dashed: true },
-        'Salt Bridges': { color: 'orange', radius: 0.12, dashed: false },
+        'Salt Bridges': { color: '#A18C00', radius: 0.05, dashed: true },
         'Pi Stacks': { color: 'green', radius: 0.12, dashed: true },
         'Pi Cation Interactions': { color: 'orange', radius: 0.10, dashed: true },
         'Halogen Bonds': { color: 'turquoise', radius: 0.10, dashed: true },
@@ -363,13 +430,6 @@ export default function PlipFormOnline() {
         console.log(`[${viewerId}] No interactions to render`);
       }
 
-      // Zoom to ligand for best view
-      console.log(`[${viewerId}] Zooming to ligand...`);
-      if (ligandAtoms.length > 0) {
-        viewer.zoomTo({ resn: 'UNL' });
-      } else {
-        viewer.zoomTo();
-      }
       
       console.log(`[${viewerId}] Rendering scene...`);
       viewer.render();
@@ -428,7 +488,7 @@ export default function PlipFormOnline() {
 
       {/* RECEPTOR */}
       <section className="space-y-2">
-        <label className="font-semibold text-gray-700 text-lg"> Receptor</label>
+        <label className="font-semibold text-gray-700 text-lg">🧬 Receptor</label>
         <div className="flex gap-2">
           <select
             value={recMode}
@@ -496,7 +556,7 @@ export default function PlipFormOnline() {
 
       {/* LIGAND */}
       <section className="space-y-2">
-        <label className="font-semibold text-gray-700 text-lg"> Ligand</label>
+        <label className="font-semibold text-gray-700 text-lg">💊 Ligand</label>
         <div className="flex gap-2">
           <select
             value={ligMode}
@@ -593,7 +653,7 @@ export default function PlipFormOnline() {
 
         <section className="bg-gradient-to-br from-purple-50 to-pink-50 p-5 rounded-xl border-2 border-purple-300 shadow-md">
           <label className="font-semibold text-gray-800 text-lg flex items-center gap-2">
-             Parallel Workers
+            ⚡ Parallel Workers
           </label>
           <p className="text-sm text-gray-600 mt-2 mb-1">
             Simultaneous analyses (CPU cores)
@@ -622,7 +682,7 @@ export default function PlipFormOnline() {
         >
           <div className="flex items-center gap-2">
             <span className="text-xl">⚙️</span>
-            <h3 className="font-semibold text-gray-800 text-lg">Advanced Processing Options      <span className= "text-green-600" > Optimized </span> </h3>
+            <h3 className="font-semibold text-gray-800 text-lg">Advanced Processing Options <span className="text-green-600">Optimized</span></h3>
           </div>
           <span className={`text-gray-600 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>
             ▼
@@ -732,14 +792,14 @@ export default function PlipFormOnline() {
           {/* RESULTS BY COMBINATION */}
           <div className="space-y-6">
             <h3 className="font-bold text-xl text-gray-800 flex items-center gap-2">
-               Detailed Results by Combination ({results.results.length})
+              📊 Detailed Results by Combination ({results.results.length})
             </h3>
 
             {results.results.map((combo, comboIdx) => (
               <div key={comboIdx} className="bg-white rounded-2xl border-2 border-gray-300 shadow-lg overflow-hidden">
                 <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-xxl text-white">
+                    <h4 className="font-bold text-xl text-white">
                       🧬 {combo.receptor || 'Unknown'} × 💊 {combo.ligand || 'Unknown'}
                     </h4>
                     <div className="flex gap-4 text-white text-sm">
@@ -882,11 +942,11 @@ export default function PlipFormOnline() {
                                 <span className="font-medium">🔵 H-bonds</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="w-4 h-0.5 bg-gray-500 border-t-2 border-dashed border-gray-600"></div>
-                                <span className="font-medium">⚫ Hydrophobic</span>
+                                <div className="w-4 h-0.5 bg-gray-400 border-t-2 border-dashed border-gray-400"></div>
+                                <span className="font-medium">🔘 Hydrophobic</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="w-4 h-1 bg-orange-500 rounded"></div>
+                                <div className="w-4 h-1 bg-yellow-500 rounded"></div>
                                 <span className="font-medium">🟠 Salt bridges</span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -907,7 +967,7 @@ export default function PlipFormOnline() {
                                 <span className="font-semibold">Protein:</span> <span className="text-gray-400">Gray cartoon + colored sticks (binding site)</span>
                               </p>
                               <p className="text-xs text-gray-600 mt-1">
-                                <span className="font-semibold">Ligand:</span> <span className="text-green-600 font-bold">Green ball-and-stick</span>
+                                <span className="font-semibold">Ligand:</span> <span className="text-orange-600 font-bold">Orange/Red ball-and-stick</span>
                               </p>
                             </div>
                           </div>

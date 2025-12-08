@@ -109,7 +109,7 @@ const validatePathLive = async (path, setter) => {
   const safePath = normalizeEnteredPath(path);
 
   try {
-    const res = await axios.get("https://backend-production-c40d.up.railway.app/validate-path", {
+    const res = await axios.get("http://127.0.0.1:8000/validate-path", {
       params: { path: safePath },
     });
     setter(res.data);
@@ -194,7 +194,7 @@ const handleBlindDockingToggle = async (e) => {
     });
 
     const res = await axios.post(
-      "https://backend-production-c40d.up.railway.app/docking/calculate-blind-box",
+      "http://127.0.0.1:8000/docking/calculate-blind-box",
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
@@ -296,7 +296,7 @@ const handleSubmit = async () => {
     const formData = buildFormData();
 
     const response = await axios.post(
-      "https://backend-production-c40d.up.railway.app/docking/generate-script",
+      "http://127.0.0.1:8000/docking/generate-script",
       formData,
       {
         responseType: "blob",
@@ -514,7 +514,7 @@ const handleRun = async () => {
 
     // 2) Ask SERVER backend to generate script TEXT but using backend paths
     const genRes = await axios.post(
-      "https://backend-production-c40d.up.railway.app/docking/generate-script-text",
+      "http://127.0.0.1:8000/docking/generate-script-text",
       genForm
     );
 
@@ -954,7 +954,7 @@ const handleGenerateScript = async () => {
     const formData = buildFormData();
 
     const response = await axios.post(
-      "https://backend-production-c40d.up.railway.app//docking/generate-script",
+      "http://127.0.0.1:8000/docking/generate-script",
       formData,
       { responseType: "blob" }   // 🔥 REQUIRED FOR DOWNLOAD
     );

@@ -1,0 +1,7 @@
+plip==2.3.0
+openbabel
+pymol-open-source
+biopython
+numpy
+pandas
+lxml
