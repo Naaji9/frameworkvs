@@ -115,27 +115,84 @@ async def generate_script_text(
 
     return {"script_text": script_text}
 # ---------- Existing: calculate-blind-box ----------
+# Line ~98 in docking.py - REPLACE the entire calculate-blind-box function:
+
 @router.post("/calculate-blind-box")
-async def calculate_blind_docking_box(receptor_files: List[UploadFile] = File(...)):
+async def calculate_blind_docking_box(
+    receptor_files: Optional[List[UploadFile]] = File(None),
+    receptor_path: Optional[str] = Form(None)
+):
+    """Calculate blind docking box from either uploaded files OR file path"""
+    
     all_coords = []
 
-    # Parse atom coordinates
-    for file in receptor_files:
-        content = await file.read()
-        lines = content.decode().splitlines()
+    # CASE 1: Files were uploaded via browse button
+    if receptor_files and len(receptor_files) > 0:
+        print(f"📁 Processing {len(receptor_files)} uploaded receptor file(s)")
+        for file in receptor_files:
+            content = await file.read()
+            lines = content.decode().splitlines()
 
-        for line in lines:
-            if line.startswith(("ATOM", "HETATM")):
-                try:
-                    x = float(line[30:38])
-                    y = float(line[38:46])
-                    z = float(line[46:54])
-                    all_coords.append([x, y, z])
-                except:
-                    continue
+            for line in lines:
+                if line.startswith(("ATOM", "HETATM")):
+                    try:
+                        x = float(line[30:38])
+                        y = float(line[38:46])
+                        z = float(line[46:54])
+                        all_coords.append([x, y, z])
+                    except:
+                        continue
+
+    # CASE 2: Path was provided (user typed it manually)
+    elif receptor_path:
+        print(f"📂 Processing receptor from path: {receptor_path}")
+        
+        # Check if path exists
+        if not os.path.exists(receptor_path):
+            raise HTTPException(status_code=400, detail=f"Receptor path does not exist: {receptor_path}")
+        
+        # Handle single file
+        if os.path.isfile(receptor_path):
+            if receptor_path.endswith(('.pdb', '.pdbqt', '.cif')):
+                files_to_process = [receptor_path]
+            else:
+                raise HTTPException(status_code=400, detail="Receptor file must be .pdb, .pdbqt, or .cif")
+        
+        # Handle directory
+        elif os.path.isdir(receptor_path):
+            files_to_process = []
+            for fname in os.listdir(receptor_path):
+                if fname.endswith(('.pdb', '.pdbqt', '.cif')):
+                    files_to_process.append(os.path.join(receptor_path, fname))
+            
+            if not files_to_process:
+                raise HTTPException(status_code=400, detail=f"No .pdb/.pdbqt/.cif files found in {receptor_path}")
+        else:
+            raise HTTPException(status_code=400, detail="Invalid receptor path")
+        
+        # Read coordinates from files
+        for filepath in files_to_process:
+            try:
+                with open(filepath, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        if line.startswith(("ATOM", "HETATM")):
+                            try:
+                                x = float(line[30:38])
+                                y = float(line[38:46])
+                                z = float(line[46:54])
+                                all_coords.append([x, y, z])
+                            except:
+                                continue
+            except Exception as e:
+                print(f"⚠️ Warning: Could not read {filepath}: {e}")
+                continue
+    
+    else:
+        raise HTTPException(status_code=400, detail="Either receptor_files or receptor_path must be provided")
 
     if not all_coords:
-        raise HTTPException(status_code=400, detail="No atom coordinates found")
+        raise HTTPException(status_code=400, detail="No atom coordinates found in receptor(s)")
 
     coords = np.array(all_coords)
 
@@ -146,9 +203,13 @@ async def calculate_blind_docking_box(receptor_files: List[UploadFile] = File(..
     # Center = midpoint of bounds
     center = (min_coords + max_coords) / 2
 
-    # Correct size: add padding on each side
+    # Size with padding
     padding = 5.0  # Å
     size = (max_coords - min_coords) + (2 * padding)
+
+    print(f"✅ Blind box calculated from {len(all_coords)} atoms")
+    print(f"   Center: ({center[0]:.2f}, {center[1]:.2f}, {center[2]:.2f})")
+    print(f"   Size: ({size[0]:.2f}, {size[1]:.2f}, {size[2]:.2f})")
 
     return {
         "center_x": round(center[0], 2),

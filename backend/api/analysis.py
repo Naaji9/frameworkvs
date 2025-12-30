@@ -22,7 +22,6 @@ from fastapi.responses import FileResponse, JSONResponse
 
 router = APIRouter(prefix="/analysis")
 
-
 # ---------------------------------------------------------
 # Utility: Save file
 # ---------------------------------------------------------
@@ -48,262 +47,260 @@ def run_cmd(cmd: List[str]) -> Tuple[int, str, str]:
         return 999, "", str(e)
 
 
-# ---------------------------------------------------------
-# UNIVERSAL CONVERTER
-# ---------------------------------------------------------
-# ---------- PREPARATION HELPERS (receptor/ligand) ----------
-def which_exists(cmdname: str) -> bool:
-    return shutil.which(cmdname) is not None
+# # ---------------------------------------------------------
+# # UNIVERSAL CONVERTER
+# # ---------------------------------------------------------
+# # ---------- PREPARATION HELPERS (receptor/ligand) ----------
+# def which_exists(cmdname: str) -> bool:
+#     return shutil.which(cmdname) is not None
 
-def prepare_receptor_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
-    """
-    Produce a docking-ready receptor .pdbqt at dst.
-    Steps:
-      - strip waters / non-protein (best-effort with obabel)
-      - add hydrogens
-      - use AutoDockTools prepare_receptor4.py if available to create pdbqt with charges
-    Returns (ok, log)
-    """
-    logs = []
-    tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.cleaned.pdb")
+# def prepare_receptor_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
+#     """
+#     Produce a docking-ready receptor .pdbqt at dst.
+#     Steps:
+#       - strip waters / non-protein (best-effort with obabel)
+#       - add hydrogens
+#       - use AutoDockTools prepare_receptor4.py if available to create pdbqt with charges
+#     Returns (ok, log)
+#     """
+#     logs = []
+#     tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.cleaned.pdb")
 
-    # 1) Try obabel to extract protein and remove waters/hetatm
-    cmd_obabel = [
-        "obabel", src, "-O", tmp_clean,
-        "-h",        # add hydrogens
-        "--delete", "HOH",  # attempt remove waters
-        "--protein", # keep protein residues only
-    ]
-    rc, out, err = run_cmd(cmd_obabel)
-    logs.append(" ".join(cmd_obabel))
-    logs.append(out or "")
-    logs.append(err or "")
+#     # 1) Try obabel to extract protein and remove waters/hetatm
+#     cmd_obabel = [
+#         "obabel", src, "-O", tmp_clean,
+#         "-h",        # add hydrogens
+#         "--delete", "HOH",  # attempt remove waters
+#         "--protein", # keep protein residues only
+#     ]
+#     rc, out, err = run_cmd(cmd_obabel)
+#     logs.append(" ".join(cmd_obabel))
+#     logs.append(out or "")
+#     logs.append(err or "")
 
-    if rc != 0 or not os.path.exists(tmp_clean):
-        # fallback: copy original and try to continue
-        tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.fallback.pdb")
-        try:
-            shutil.copyfile(src, tmp_clean)
-            logs.append(f"obabel protein extraction failed (rc={rc}); using original copy as fallback.")
-        except Exception as e:
-            return False, "\n".join(logs + [f"Failed to copy fallback: {e}"])
+#     if rc != 0 or not os.path.exists(tmp_clean):
+#         # fallback: copy original and try to continue
+#         tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.fallback.pdb")
+#         try:
+#             shutil.copyfile(src, tmp_clean)
+#             logs.append(f"obabel protein extraction failed (rc={rc}); using original copy as fallback.")
+#         except Exception as e:
+#             return False, "\n".join(logs + [f"Failed to copy fallback: {e}"])
 
-    # 2) Use AutoDockTools if available (preferred) to make pdbqt with charges
-    if which_exists("prepare_receptor4.py"):
-        cmd_adt = ["prepare_receptor4.py", "-r", tmp_clean, "-o", dst, "-A", "hydrogens"]
-        rc2, out2, err2 = run_cmd(cmd_adt)
-        logs.append(" ".join(cmd_adt))
-        logs.append(out2 or "")
-        logs.append(err2 or "")
-        if rc2 == 0 and os.path.exists(dst):
-            return True, "\n".join(logs)
-        else:
-            logs.append(f"prepare_receptor4.py failed (rc={rc2})")
-    else:
-        logs.append("prepare_receptor4.py not found in PATH; falling back to obabel pdbqt conversion (less reliable).")
+#     # 2) Use AutoDockTools if available (preferred) to make pdbqt with charges
+#     if which_exists("prepare_receptor4.py"):
+#         cmd_adt = ["prepare_receptor4.py", "-r", tmp_clean, "-o", dst, "-A", "hydrogens"]
+#         rc2, out2, err2 = run_cmd(cmd_adt)
+#         logs.append(" ".join(cmd_adt))
+#         logs.append(out2 or "")
+#         logs.append(err2 or "")
+#         if rc2 == 0 and os.path.exists(dst):
+#             return True, "\n".join(logs)
+#         else:
+#             logs.append(f"prepare_receptor4.py failed (rc={rc2})")
+#     else:
+#         logs.append("prepare_receptor4.py not found in PATH; falling back to obabel pdbqt conversion (less reliable).")
 
-    # 3) Fallback: obabel -> pdbqt with charges (best-effort)
-    cmd_obabel2 = ["obabel", tmp_clean, "-O", dst, "--partialcharge", "gasteiger", "-h"]
-    rc3, out3, err3 = run_cmd(cmd_obabel2)
-    logs.append(" ".join(cmd_obabel2))
-    logs.append(out3 or "")
-    logs.append(err3 or "")
-    if rc3 == 0 and os.path.exists(dst):
-        return True, "\n".join(logs)
-    return False, "\n".join(logs)
-
-
-def prepare_ligand_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
-    """
-    Prepare ligand -> pdbqt:
-      - generate 3D if needed, remove salts, add H
-      - use prepare_ligand4.py if available (preferred) to set torsions & charges
-      - fallback to obabel with gasteiger charges
-    """
-    logs = []
-    tmp_3d = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_ligand.3d.sdf")
-
-    # 1) Generate 3D + separate salts
-    cmd3d = ["obabel", src, "-O", tmp_3d, "--gen3d", "--separate", "-h"]
-    rc, out, err = run_cmd(cmd3d)
-    logs.append(" ".join(cmd3d))
-    logs.append(out or ""); logs.append(err or "")
-
-    # prefer AutoDockTools prepare_ligand4.py
-    if which_exists("prepare_ligand4.py"):
-        cmd_adt = ["prepare_ligand4.py", "-l", tmp_3d, "-o", dst, "-A", "hydrogens"]
-        rc2, out2, err2 = run_cmd(cmd_adt)
-        logs.append(" ".join(cmd_adt))
-        logs.append(out2 or ""); logs.append(err2 or "")
-        if rc2 == 0 and os.path.exists(dst):
-            return True, "\n".join(logs)
-        else:
-            logs.append(f"prepare_ligand4.py failed (rc={rc2})")
-    else:
-        logs.append("prepare_ligand4.py not found in PATH; falling back to obabel pdbqt conversion.")
-
-    # Fallback: obabel 3D -> pdbqt with charges
-    cmd_fallback = ["obabel", tmp_3d, "-O", dst, "--partialcharge", "gasteiger", "-h", "--gen3d"]
-    rc3, out3, err3 = run_cmd(cmd_fallback)
-    logs.append(" ".join(cmd_fallback))
-    logs.append(out3 or ""); logs.append(err3 or "")
-    if rc3 == 0 and os.path.exists(dst):
-        return True, "\n".join(logs)
-    return False, "\n".join(logs)
+#     # 3) Fallback: obabel -> pdbqt with charges (best-effort)
+#     cmd_obabel2 = ["obabel", tmp_clean, "-O", dst, "--partialcharge", "gasteiger", "-h"]
+#     rc3, out3, err3 = run_cmd(cmd_obabel2)
+#     logs.append(" ".join(cmd_obabel2))
+#     logs.append(out3 or "")
+#     logs.append(err3 or "")
+#     if rc3 == 0 and os.path.exists(dst):
+#         return True, "\n".join(logs)
+#     return False, "\n".join(logs)
 
 
-# ---------- ENHANCED convert_any THAT ACCEPTS 'type' ----------
-def convert_any(in_path: str, out_path: str, role: Optional[str] = None) -> Tuple[bool, str]:
-    """
-    role: 'receptor' or 'ligand' or None. If out_path ends with .pdbqt
-    we will call specialized preparers for receptor/ligand.
-    """
-    out_fmt = Path(out_path).suffix.lstrip(".").lower()
+# def prepare_ligand_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
+#     """
+#     Prepare ligand -> pdbqt:
+#       - generate 3D if needed, remove salts, add H
+#       - use prepare_ligand4.py if available (preferred) to set torsions & charges
+#       - fallback to obabel with gasteiger charges
+#     """
+#     logs = []
+#     tmp_3d = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_ligand.3d.sdf")
 
-    # If target is pdbqt, run the prep pipeline
-    if out_fmt == "pdbqt":
-        try:
-            workdir = os.path.dirname(out_path) or tempfile.gettempdir()
-            if role == "receptor":
-                ok, log = prepare_receptor_for_pdbqt(in_path, out_path, workdir=workdir)
-                return ok, log
-            else:
-                # default to ligand preparation
-                ok, log = prepare_ligand_for_pdbqt(in_path, out_path, workdir=workdir)
-                return ok, log
-        except Exception as e:
-            return False, f"PDBQT prep exception: {e}"
+#     # 1) Generate 3D + separate salts
+#     cmd3d = ["obabel", src, "-O", tmp_3d, "--gen3d", "--separate", "-h"]
+#     rc, out, err = run_cmd(cmd3d)
+#     logs.append(" ".join(cmd3d))
+#     logs.append(out or ""); logs.append(err or "")
 
-    # Otherwise, use obabel as before
-    in_fmt = Path(in_path).suffix.lstrip(".").lower()
-    cmd = [
-        "obabel",
-        f"-i{in_fmt}", in_path,
-        f"-o{out_fmt}", "-O", out_path,
-        "--unique",
-        "-h"
-    ]
-    # keep previous ligand-specific extras for non-pdbqt conversions when needed
-    if out_fmt == "pdbqt":
-        cmd += ["--partialcharge", "gasteiger", "--gen3d", "--ph=7.4"]
+#     # prefer AutoDockTools prepare_ligand4.py
+#     if which_exists("prepare_ligand4.py"):
+#         cmd_adt = ["prepare_ligand4.py", "-l", tmp_3d, "-o", dst, "-A", "hydrogens"]
+#         rc2, out2, err2 = run_cmd(cmd_adt)
+#         logs.append(" ".join(cmd_adt))
+#         logs.append(out2 or ""); logs.append(err2 or "")
+#         if rc2 == 0 and os.path.exists(dst):
+#             return True, "\n".join(logs)
+#         else:
+#             logs.append(f"prepare_ligand4.py failed (rc={rc2})")
+#     else:
+#         logs.append("prepare_ligand4.py not found in PATH; falling back to obabel pdbqt conversion.")
 
-    rc, out, err = run_cmd(cmd)
-    log = (out or "") + "\n" + (err or "")
-    if rc != 0 or not os.path.exists(out_path):
-        return False, log
-    return True, log
+#     # Fallback: obabel 3D -> pdbqt with charges
+#     cmd_fallback = ["obabel", tmp_3d, "-O", dst, "--partialcharge", "gasteiger", "-h", "--gen3d"]
+#     rc3, out3, err3 = run_cmd(cmd_fallback)
+#     logs.append(" ".join(cmd_fallback))
+#     logs.append(out3 or ""); logs.append(err3 or "")
+#     if rc3 == 0 and os.path.exists(dst):
+#         return True, "\n".join(logs)
+#     return False, "\n".join(logs)
 
 
-# ---------- UPDATE /convert endpoint to accept 'type' ----------
-@router.post("/convert")
-async def api_convert(
-    file: UploadFile = File(...),
-    outputFormat: str = Form(...),
-    outputFolder: str = Form(...),
-    type: str = Form("ligand")   # <-- new optional form param sent by frontend
-):
-    outputFormat = outputFormat.lower().strip()
-    type = (type or "ligand").lower().strip()
+# # ---------- ENHANCED convert_any THAT ACCEPTS 'type' ----------
+# def convert_any(in_path: str, out_path: str, role: Optional[str] = None) -> Tuple[bool, str]:
+#     """
+#     role: 'receptor' or 'ligand' or None. If out_path ends with .pdbqt
+#     we will call specialized preparers for receptor/ligand.
+#     """
+#     out_fmt = Path(out_path).suffix.lstrip(".").lower()
 
-    allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
-    if outputFormat not in allowed:
-        raise HTTPException(400, f"Invalid output format: {outputFormat}")
+#     # If target is pdbqt, run the prep pipeline
+#     if out_fmt == "pdbqt":
+#         try:
+#             workdir = os.path.dirname(out_path) or tempfile.gettempdir()
+#             if role == "receptor":
+#                 ok, log = prepare_receptor_for_pdbqt(in_path, out_path, workdir=workdir)
+#                 return ok, log
+#             else:
+#                 # default to ligand preparation
+#                 ok, log = prepare_ligand_for_pdbqt(in_path, out_path, workdir=workdir)
+#                 return ok, log
+#         except Exception as e:
+#             return False, f"PDBQT prep exception: {e}"
 
-    os.makedirs(outputFolder, exist_ok=True)
-    in_path = save_upload(file, outputFolder)
-    base = Path(file.filename).stem
-    out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
+#     # Otherwise, use obabel as before
+#     in_fmt = Path(in_path).suffix.lstrip(".").lower()
+#     cmd = [
+#         "obabel",
+#         f"-i{in_fmt}", in_path,
+#         f"-o{out_fmt}", "-O", out_path,
+#         "--unique",
+#         "-h"
+#     ]
+#     # keep previous ligand-specific extras for non-pdbqt conversions when needed
+#     if out_fmt == "pdbqt":
+#         cmd += ["--partialcharge", "gasteiger", "--gen3d", "--ph=7.4"]
 
-    ok, log = convert_any(in_path, out_path, role=type)
-    if not ok:
-        raise HTTPException(500, f"Conversion failed:\n{log}")
-
-    return {"status": "ok", "input": in_path, "output": out_path, "log": log}
-
-# ---------------------------------------------------------
-# FILE PREVIEW ENDPOINT
-# ---------------------------------------------------------
-@router.get("/file-text")
-def read_text_file(path: str):
-    with open(path, "r") as f:
-        return f.read()
+#     rc, out, err = run_cmd(cmd)
+#     log = (out or "") + "\n" + (err or "")
+#     if rc != 0 or not os.path.exists(out_path):
+#         return False, log
+#     return True, log
 
 
-# ---------------------------------------------------------
-# FOLDER CONVERSION
-# ---------------------------------------------------------
-@router.post("/convert-folder")
-async def api_convert_folder(
-    outputFormat: str = Form(...),
-    inputFolder: Optional[str] = Form(None),
-    outputFolder: str = Form(...),
-    files: List[UploadFile] = File(None),
-):
-    outputFormat = outputFormat.lower().strip()
-    allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
+# # ---------- UPDATE /convert endpoint to accept 'type' ----------
+# @router.post("/convert")
+# async def api_convert(
+#     file: UploadFile = File(...),
+#     outputFormat: str = Form(...),
+#     outputFolder: str = Form(...),
+#     type: str = Form("ligand")   # <-- new optional form param sent by frontend
+# ):
+#     outputFormat = outputFormat.lower().strip()
+#     type = (type or "ligand").lower().strip()
 
-    if outputFormat not in allowed:
-        raise HTTPException(400, f"Invalid output format: {outputFormat}")
+#     allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
+#     if outputFormat not in allowed:
+#         raise HTTPException(400, f"Invalid output format: {outputFormat}")
 
-    os.makedirs(outputFolder, exist_ok=True)
+#     os.makedirs(outputFolder, exist_ok=True)
+#     in_path = save_upload(file, outputFolder)
+#     base = Path(file.filename).stem
+#     out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
 
-    converted = []
-    failed = []
+#     ok, log = convert_any(in_path, out_path, role=type)
+#     if not ok:
+#         raise HTTPException(500, f"Conversion failed:\n{log}")
 
-    # Uploaded files case
-    if files:
-        temp = tempfile.mkdtemp()
-        try:
-            for uf in files:
-                src = save_upload(uf, temp)
-                base = Path(uf.filename).stem
-                out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
+#     return {"status": "ok", "input": in_path, "output": out_path, "log": log}
 
-                ok, log = convert_any(src, out_path, role=type)
-                if ok:
-                    converted.append(out_path)
-                else:
-                    failed.append({"file": uf.filename, "error": log})
-        finally:
-            shutil.rmtree(temp, ignore_errors=True)
+# # ---------------------------------------------------------
+# # FILE PREVIEW ENDPOINT
+# # ---------------------------------------------------------
+# @router.get("/file-text")
+# def read_text_file(path: str):
+#     with open(path, "r") as f:
+#         return f.read()
 
-    # Folder conversion case
-    else:
-        if not inputFolder or not os.path.isdir(inputFolder):
-            raise HTTPException(400, "Invalid or missing inputFolder")
 
-        for fname in os.listdir(inputFolder):
-            src = os.path.join(inputFolder, fname)
-            if not os.path.isfile(src):
-                continue
+# # ---------------------------------------------------------
+# # FOLDER CONVERSION
+# # ---------------------------------------------------------
+# @router.post("/convert-folder")
+# async def api_convert_folder(
+#     outputFormat: str = Form(...),
+#     inputFolder: Optional[str] = Form(None),
+#     outputFolder: str = Form(...),
+#     type: str = Form("ligand"),  # Add this
+#     files: List[UploadFile] = File(None),
+# ):
+#     outputFormat = outputFormat.lower().strip()
+#     allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
 
-            base = Path(fname).stem
-            out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
+#     if outputFormat not in allowed:
+#         raise HTTPException(400, f"Invalid output format: {outputFormat}")
 
-            ok, log = convert_any(src, out_path)
-            if ok:
-                converted.append(out_path)
-            else:
-                failed.append({"file": fname, "error": log})
+#     os.makedirs(outputFolder, exist_ok=True)
 
-    return {
-        "status": "ok",
-        "converted": converted,
-        "failed": failed
-    }
-@router.get("/file")
-def serve_file(folder: str, name: str):
-    full = os.path.join(folder, name)
+#     converted = []
+#     failed = []
 
-    if not os.path.exists(full):
-        raise HTTPException(404, "File not found")
+#     # Uploaded files case
+#     if files:
+#         temp = tempfile.mkdtemp()
+#         try:
+#             for uf in files:
+#                 src = save_upload(uf, temp)
+#                 base = Path(uf.filename).stem
+#                 out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
 
-    return FileResponse(
-        full,
-        filename=name,
-        media_type="application/octet-stream"
-    )
+#                 ok, log = convert_any(src, out_path, role=type)
+#                 if ok:
+#                     converted.append(out_path)
+#                 else:
+#                     failed.append({"file": uf.filename, "error": log})
+#         finally:
+#             shutil.rmtree(temp, ignore_errors=True)
 
+#     # Folder conversion case
+#     else:
+#         if not inputFolder or not os.path.isdir(inputFolder):
+#             raise HTTPException(400, "Invalid or missing inputFolder")
+
+#         for fname in os.listdir(inputFolder):
+#             src = os.path.join(inputFolder, fname)
+#             if not os.path.isfile(src):
+#                 continue
+
+#             base = Path(fname).stem
+#             out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
+
+#             ok, log = convert_any(src, out_path)
+#             if ok:
+#                 converted.append(out_path)
+#             else:
+#                 failed.append({"file": fname, "error": log})
+
+#     return {
+#         "status": "ok",
+#         "converted": converted,
+#         "failed": failed
+#     }
+# @router.get("/file")
+# def serve_file(path: str):
+#     if not os.path.exists(path):
+#         raise HTTPException(404, "File not found")
+    
+#     return FileResponse(
+#         path,
+#         filename=os.path.basename(path),
+#         media_type="application/octet-stream"
+#     )
 #---------------------------------------
 # ML SCORING TEMPLATE
 # ---------------------------------------------------------
@@ -373,11 +370,7 @@ async def api_align(
 # ---------------------------------------------------------
 # FILE SERVING
 # ---------------------------------------------------------
-@router.get("/file")
-async def serve_file(path: str):
-    if not os.path.exists(path):
-        raise HTTPException(404, "Not found")
-    return FileResponse(path)
+
 
 
 # ---------------------------------------------------------
@@ -397,8 +390,8 @@ async def serve_file(path: str):
 # ============================================================================
 """
 Server Backend (Online)
-Generates PLIP execution scripts and sends them to local backend
-PLIP logic stays on server - user never sees it
+Generates PLIP execution scripts - SIMPLIFIED VERSION
+Processes ONE receptor-ligand pair (matching done in local backend)
 """
 import os
 import logging
@@ -409,14 +402,14 @@ import requests
 logging.basicConfig(level=logging.INFO)
 LOG = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/analysis")
+
 
 # ============================================================================
-# PLIP SCRIPT GENERATOR - This stays on server, hidden from user
+# PLIP SCRIPT GENERATOR - Simplified for single pair processing
 # ============================================================================
 
 def generate_plip_script(config: dict) -> str:
-    """Generate PLIP execution script - kept server-side only"""
+    """Generate PLIP execution script for single receptor-ligand pair"""
     script = '''
 import os, sys, subprocess, shutil, json, csv
 import xml.etree.ElementTree as ET
@@ -430,45 +423,32 @@ def safe_run(cmd, cwd=None):
 def remove_smiles_from_pdb(pdb_path):
     """Remove SMILES strings from PDB file"""
     temp_path = pdb_path + ".tmp"
-    lines_kept = 0
     lines_removed = 0
     
     try:
         with open(pdb_path, "r") as infile, open(temp_path, "w") as outfile:
             for line in infile:
                 stripped = line.strip()
-                
-                # Check for SMILES notation patterns
-                # Pattern 1: Lines starting with "SMILES" or "smiles:"
-                # Pattern 2: Lines with stereochemistry markers [C@@H] or [C@H]
-                # Pattern 3: Lines that look like long chemical notation (no spaces, lots of brackets/parentheses)
                 is_smiles = False
                 
                 if stripped.startswith("SMILES") or stripped.lower().startswith("smiles:"):
                     is_smiles = True
                 elif "[C@@H]" in line or "[C@H]" in line or "[@" in line:
-                    # Contains stereochemistry notation typical of SMILES
                     is_smiles = True
                 elif stripped and not stripped.startswith(("ATOM", "HETATM", "TER", "END", "MODEL", "ENDMDL", "CONECT", "REMARK", "HEADER", "TITLE", "CRYST")):
-                    # Check if it's a long string with many brackets/parentheses and few spaces
                     if len(stripped) > 50 and stripped.count("(") + stripped.count("[") > 5 and stripped.count(" ") < 3:
                         is_smiles = True
                 
                 if is_smiles:
                     lines_removed += 1
-                    print(f"  → Removing SMILES line: {stripped[:80]}{'...' if len(stripped) > 80 else ''}")
                     continue
                     
                 outfile.write(line)
-                lines_kept += 1
         
-        # Replace original file with cleaned version
         shutil.move(temp_path, pdb_path)
         
         if lines_removed > 0:
             print(f"  ✓ Removed {lines_removed} SMILES lines from PDB")
-        else:
-            print(f"  ✓ No SMILES lines found in PDB")
         
         return True
     except Exception as e:
@@ -509,10 +489,8 @@ def merge_pdbqt(rec, lig, outp):
         out.write(open(rec).read())
         out.write(open(lig).read())
 
-
-
 def parse_plip_xml(xml_path, output_dir):
-    """Parse PLIP XML output and create CSV/JSON files"""
+    """Parse PLIP XML output and create CSV files"""
     if not os.path.exists(xml_path):
         return False
     try:
@@ -563,19 +541,14 @@ def parse_plip_xml(xml_path, output_dir):
                     interactions_by_type[interaction_type_name].append(data)
         
         if all_interactions:
-            # Combined CSV
             csv_path = os.path.join(output_dir, 'interactions_all.csv')
             preferred_order = [
-                                'interaction_type', 'dist', 'dist_d-a', 'dist_h-a', 'don_angle', 'donoridx',
-                                'donortype', 'restype', 'resnr', 'acceptoridx', 'acceptortype',
+                'interaction_type', 'dist', 'dist_d-a', 'dist_h-a', 'don_angle', 'donoridx',
+                'donortype', 'restype', 'resnr', 'acceptoridx', 'acceptortype',
             ]
-            # Collect all keys that exist in the data
             all_keys = sorted(set(k for d in all_interactions for k in d.keys()))
-
-            # Generate final ordered list
             ordered_keys = [k for k in preferred_order if k in all_keys] + \
                            [k for k in all_keys if k not in preferred_order]
-
             keys = ordered_keys
 
             with open(csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -583,7 +556,6 @@ def parse_plip_xml(xml_path, output_dir):
                 writer.writeheader()
                 writer.writerows(all_interactions)
             
-            # CSV by type
             for itype, interactions in interactions_by_type.items():
                 if not interactions:
                     continue
@@ -594,11 +566,9 @@ def parse_plip_xml(xml_path, output_dir):
                     writer.writeheader()
                     writer.writerows(interactions)
             
-            # Combined JSON
             with open(os.path.join(output_dir, 'interactions_all.json'), 'w') as f:
                 json.dump(all_interactions, f, indent=2)
             
-            # JSON by type
             for itype, interactions in interactions_by_type.items():
                 if not interactions:
                     continue
@@ -606,7 +576,6 @@ def parse_plip_xml(xml_path, output_dir):
                 with open(os.path.join(output_dir, filename), 'w') as f:
                     json.dump(interactions, f, indent=2)
             
-            # Summary CSV
             summary_path = os.path.join(output_dir, 'interaction_summary.csv')
             counts = {}
             for i in all_interactions:
@@ -623,17 +592,27 @@ def parse_plip_xml(xml_path, output_dir):
         print(f"Error parsing XML: {e}")
         return False
 
+# ============================================================================
+# MAIN PROCESSING - Single receptor-ligand pair
+# ============================================================================
+
 def main():
     receptor_path = os.environ.get('RECEPTOR_PATH')
     ligand_path = os.environ.get('LIGAND_PATH')
     output_dir = os.environ.get('OUTPUT_DIR')
     max_poses = int(os.environ.get('MAX_POSES', 5))
     
-    print(f"PLIP Analysis Starting...")
-    print(f"  Receptor: {receptor_path}")
-    print(f"  Ligand: {ligand_path}")
+    print(f"🔬 PLIP Analysis Starting...")
+    print(f"  Receptor: {os.path.basename(receptor_path)}")
+    print(f"  Ligand: {os.path.basename(ligand_path)}")
     print(f"  Output: {output_dir}")
     print(f"  Max poses: {max_poses}")
+    
+    # Original files already copied by local backend
+    # Just verify they exist
+    original_files_dir = os.path.join(output_dir, "original_files")
+    if os.path.exists(original_files_dir):
+        print(f"  ✓ Original files preserved in: {original_files_dir}")
     
     # Split ligand file into individual poses
     poses_root = os.path.join(output_dir, "poses")
@@ -643,8 +622,8 @@ def main():
     total_poses = len(all_pose_files)
     selected_poses = all_pose_files[:max_poses]
     
-    print(f"  Total poses in file: {total_poses}")
-    print(f"  Analyzing first {len(selected_poses)} poses")
+    print(f"  Total poses in ligand: {total_poses}")
+    print(f"  Analyzing first {len(selected_poses)} pose(s)")
     
     # Remove excess pose files
     for pose_file in all_pose_files[max_poses:]:
@@ -653,9 +632,10 @@ def main():
         except:
             pass
     
-    results = []
+    # Process each pose
+    pose_results = []
     for i, pose_file in enumerate(selected_poses, start=1):
-        print(f"\\nProcessing pose {i}/{len(selected_poses)}...")
+        print(f"\\n  🎯 Processing pose {i}/{len(selected_poses)}...")
         pose_dir = os.path.join(output_dir, f"pose_{i}")
         os.makedirs(pose_dir, exist_ok=True)
         
@@ -667,10 +647,11 @@ def main():
         
         # Convert to PDB format
         safe_run(["obabel", merge_path, "-O", complex_path], cwd=pose_dir)
-        # CRITICAL: Remove SMILES strings from complex.pdb before PLIP
-        print(f"  Cleaning SMILES from complex.pdb...")
-        remove_smiles_from_pdb(complex_path)       
-
+        
+        # Remove SMILES from PDB
+        print(f"    Cleaning SMILES from complex.pdb...")
+        remove_smiles_from_pdb(complex_path)
+        
         # Run PLIP analysis
         plip_cmd = ["plip", "-f", complex_path, "-x", "-t", "-y", "--nohydro", "--nofixfile", "--nofix"]
         try:
@@ -678,15 +659,15 @@ def main():
             xml_path = os.path.join(pose_dir, "report.xml")
             if os.path.exists(xml_path):
                 parse_plip_xml(xml_path, pose_dir)
-                print(f"  ✓ Pose {i} completed")
+                print(f"    ✓ Pose {i} completed")
             else:
-                print(f"  ⚠ Pose {i}: No XML output")
+                print(f"    ⚠ Pose {i}: No XML output")
         except Exception as e:
-            print(f"  ✗ Pose {i} failed: {e}")
+            print(f"    ✗ Pose {i} failed: {e}")
         
         # Collect output files
         files = os.listdir(pose_dir)
-        results.append({
+        pose_results.append({
             "pose": i,
             "folder": pose_dir,
             "csv_files": [f for f in files if f.endswith('.csv')],
@@ -703,10 +684,11 @@ def main():
     # Output results as JSON
     output = {
         "total_poses_in_file": total_poses,
-        "max_poses_requested": max_poses,
         "poses_analyzed": len(selected_poses),
-        "poses": results
+        "poses": pose_results
     }
+    
+    print(f"\\n  ✅ Analysis complete!")
     print(json.dumps(output))
 
 if __name__ == "__main__":
@@ -722,19 +704,14 @@ async def plip_submit_job(
     output_folder: str = Form(...),
     max_poses: int = Form(5),
     max_workers: int = Form(4),
-    local_backend_url: str = Form("http://127.0.0.1:5005"),
-    remove_waters: str = Form("false"),
-    remove_ions: str = Form("false"),
-    add_hydrogens: str = Form("true"),
-    keep_hetero: str = Form("true")
+    local_backend_url: str = Form("http://127.0.0.1:5005")
 ):
     """
-    PLIP job submission - generates script and sends to local backend
-    NOW SUPPORTS PARALLEL PROCESSING OF MULTIPLE RECEPTOR/LIGAND COMBINATIONS
+    PLIP job submission - matching done in local backend
     """
     
     LOG.info("="*60)
-    LOG.info(f"[PLIP] New parallel job request")
+    LOG.info(f"[PLIP] New job request (simplified)")
     LOG.info(f"  Receptor session: {receptor_session}")
     LOG.info(f"  Ligand session: {ligand_session}")
     LOG.info(f"  Max poses per combination: {max_poses}")
@@ -744,18 +721,14 @@ async def plip_submit_job(
     
     config = {
         "max_poses": max_poses,
-        "max_workers": max_workers,
-        "remove_waters": remove_waters == "true",
-        "remove_ions": remove_ions == "true",
-        "add_hydrogens": add_hydrogens == "true",
-        "keep_hetero": keep_hetero == "true"
+        "max_workers": max_workers
     }
     
-    # Generate PLIP analysis script
+    # Generate simplified PLIP script (no matching logic)
     script = generate_plip_script(config)
     
     try:
-        LOG.info("[PLIP] Sending script to local backend for parallel execution...")
+        LOG.info("[PLIP] Sending script to local backend...")
         response = requests.post(
             f"{local_backend_url}/execute-job",
             data={
@@ -767,7 +740,7 @@ async def plip_submit_job(
                 "max_workers": max_workers,
                 "config": str(config)
             },
-            timeout=1800  # 30 minutes for parallel processing
+            timeout=10000
         )
         
         if response.status_code != 200:
@@ -801,6 +774,6 @@ def plip_health():
     return {
         "status": "healthy", 
         "service": "PLIP", 
-        "version": "2.0.0",
-        "features": ["parallel_processing", "multi_receptor_ligand", "smiles_removal"]
+        "version": "3.0.0",
+        "features": ["flattened_structure", "exact_matching", "parallel_processing", "simplified_script"]
     }

@@ -58,7 +58,14 @@ export default function NewDocking() {
       stepX: "", stepY: "", stepZ: "",
       countX: "", countY: "", countZ: ""
     });
-    
+    // After line ~50 (after other useState declarations)
+    const [enablePlip, setEnablePlip] = useState(false);
+    const [plipMaxPoses, setPlipMaxPoses] = useState(5);
+    const [plipMaxWorkers, setPlipMaxWorkers] = useState(4);
+    const [plipRemoveWaters, setPlipRemoveWaters] = useState(false);
+    const [plipRemoveIons, setPlipRemoveIons] = useState(false);
+    const [plipAddHydrogens, setPlipAddHydrogens] = useState(true);
+    const [plipKeepHetero, setPlipKeepHetero] = useState(true);
     const [exhaustiveness, setExhaustiveness] = useState(8);
     const [topbest, setTopbest] = useState(10);
     const [cpuCores, setCpuCores] = useState(0); //0 = use all 
@@ -181,17 +188,39 @@ const renderHighlightedPath = (path, badPart) => {
 
 
 
+// Replace handleBlindDockingToggle (around line ~210)
+
 const handleBlindDockingToggle = async (e) => {
   const checked = e.target.checked;
   setIsBlindDocking(checked);
 
-  if (!checked || receptorFiles.length === 0) return;
+  if (!checked) return;
+
+  // Validate we have receptor data
+  if (receptorFiles.length === 0 && !receptorPath) {
+    alert("⚠️ Please select or enter receptor path first");
+    setIsBlindDocking(false);
+    return;
+  }
 
   try {
     const formData = new FormData();
-    receptorFiles.forEach((file) => {
-      formData.append("receptor_files", file);
-    });
+    
+    // Send files if available (from Browse button)
+    if (receptorFiles.length > 0) {
+      receptorFiles.forEach((file) => {
+        formData.append("receptor_files", file);
+      });
+    }
+    
+    // Send path if files not available (manual entry)
+    if (receptorFiles.length === 0 && receptorPath) {
+      formData.append("receptor_path", receptorPath);
+    }
+
+    console.log("🔍 Sending blind docking request...");
+    console.log("Files:", receptorFiles.length);
+    console.log("Path:", receptorPath);
 
     const res = await axios.post(
       "http://127.0.0.1:8000/docking/calculate-blind-box",
@@ -216,6 +245,7 @@ const handleBlindDockingToggle = async (e) => {
     alert("✅ Blind docking box calculated and set.");
   } catch (err) {
     console.error("Blind docking error:", err);
+    setIsBlindDocking(false);
     alert(
       "❌ Failed to compute blind docking box: " +
         (err.response?.data?.detail || err.message)
@@ -414,16 +444,26 @@ const buildFormData = () => {
 
   formData.append("output_path", outputFolder || "outputs/vsframework.py");
   formData.append("blind_docking", isBlindDocking);
+  // Add PLIP parameters
+  formData.append("enable_plip", enablePlip);
+  formData.append("plip_max_poses", plipMaxPoses);
+  formData.append("plip_max_workers", plipMaxWorkers);
+  formData.append("plip_remove_waters", plipRemoveWaters);
+  formData.append("plip_remove_ions", plipRemoveIons);
+  formData.append("plip_add_hydrogens", plipAddHydrogens);
+  formData.append("plip_keep_hetero", plipKeepHetero);
+
 
   return formData;
 };
 
-const startPollingJob = (jobId) => {
-  setShowTerminal(true);   // ⬅️ open popup when polling starts
+const startPollingJobWithPlip = (jobId, uploadJob) => {
+  setShowTerminal(true);
+  let plipStarted = false;
 
   const interval = setInterval(async () => {
     try {
-      const res = await axios.get(`http://localhost:5005/run-status/${jobId}`);
+      const res = await axios.get(`http://localhost:5006/run-status/${jobId}`);
       const data = res.data;
 
       setRunStatus(data.status);
@@ -433,15 +473,141 @@ const startPollingJob = (jobId) => {
         setTerminalOutput((prev) => [...prev, ...data.log_tail]);
       }
 
-      if (data.status === "finished" || data.status === "failed") {
+      // Check if docking finished
+      if (data.status === "finished" && !plipStarted && enablePlip) {
+        plipStarted = true;
+        
+        // Add separator in terminal
+        setTerminalOutput((prev) => [
+          ...prev,
+          "\n" + "=".repeat(80),
+          "🧬 DOCKING COMPLETE - STARTING PLIP ANALYSIS",
+          "=".repeat(80) + "\n"
+        ]);
+
+        // Trigger PLIP analysis
+        try {
+          await runPlipAnalysis(uploadJob);
+          
+          setTerminalOutput((prev) => [
+            ...prev,
+            "\n" + "=".repeat(80),
+            "✅ PLIP ANALYSIS COMPLETED!",
+            "=".repeat(80) + "\n"
+          ]);
+        } catch (plipErr) {
+          console.error("PLIP failed:", plipErr);
+          setTerminalOutput((prev) => [
+            ...prev,
+            "\n❌ PLIP analysis failed: " + plipErr.message,
+            "⚠️  Docking results are safe and available.\n"
+          ]);
+        }
+        
         clearInterval(interval);
+        setIsRunning(false);
+        
+        // Cleanup uploaded files
+        if (uploadJob && uploadJob.job_id) {
+          try {
+            await axios.delete(`http://localhost:5006/cleanup/${uploadJob.job_id}`);
+          } catch (err) {
+            console.warn("Cleanup failed:", err);
+          }
+        }
+      }
+
+      // Handle docking failure or completion without PLIP
+      if (data.status === "failed" || (data.status === "finished" && !enablePlip)) {
+        clearInterval(interval);
+        setIsRunning(false);
+        
+        // Cleanup uploaded files
+        if (uploadJob && uploadJob.job_id) {
+          try {
+            await axios.delete(`http://localhost:5006/cleanup/${uploadJob.job_id}`);
+          } catch (err) {
+            console.warn("Cleanup failed:", err);
+          }
+        }
       }
     } catch (err) {
       clearInterval(interval);
+      setIsRunning(false);
     }
   }, 1000);
 };
 
+const runPlipAnalysis = async (uploadJob) => {
+  console.log("🧬 Starting PLIP analysis...");
+  
+  // Generate PLIP script with correct paths
+  const plipForm = new FormData();
+  
+  // Use same receptor as docking
+  plipForm.append("receptor_path", receptorPath);
+  
+  // Use docking OUTPUT as PLIP ligand input
+  plipForm.append("ligand_path", outputFolder);
+  
+  // PLIP results go to subfolder
+  const plipOutput = outputFolder.replace(/\/$/, '') + "/plip_analysis";
+  plipForm.append("output_folder", plipOutput);
+  
+  plipForm.append("max_poses", plipMaxPoses);
+  plipForm.append("max_workers", plipMaxWorkers);
+  plipForm.append("remove_waters", plipRemoveWaters);
+  plipForm.append("remove_ions", plipRemoveIons);
+  plipForm.append("add_hydrogens", plipAddHydrogens);
+  plipForm.append("keep_hetero", plipKeepHetero);
+
+  // Generate PLIP script from server backend
+  const plipScriptRes = await axios.post(
+    "http://127.0.0.1:8000/plip/generate-script",
+    plipForm,
+    { responseType: "text" }
+  );
+
+  const plipScriptText = plipScriptRes.data;
+
+  // Send PLIP script to local backend to execute
+  const runPlipForm = new FormData();
+  runPlipForm.append("script_content", plipScriptText);
+  runPlipForm.append("upload_job_id", uploadJob?.job_id || "");
+
+  const plipRunRes = await axios.post(
+    "http://localhost:5006/run-script",
+    runPlipForm,
+    { timeout: 0 }
+  );
+
+  const plipJobId = plipRunRes.data.job_id;
+  console.log("✅ PLIP job started:", plipJobId);
+
+  // Poll PLIP progress
+  return new Promise((resolve, reject) => {
+    const plipPoll = setInterval(async () => {
+      try {
+        const status = await axios.get(`http://localhost:5006/run-status/${plipJobId}`);
+        
+        if (status.data.log_tail) {
+          setTerminalOutput((prev) => [...prev, ...status.data.log_tail]);
+        }
+
+        if (status.data.status === "finished") {
+          clearInterval(plipPoll);
+          resolve();
+        } else if (status.data.status === "failed") {
+          clearInterval(plipPoll);
+          reject(new Error("PLIP execution failed"));
+        }
+      } catch (err) {
+        clearInterval(plipPoll);
+        reject(err);
+      }
+    }, 2000);
+  });
+};
 
 // Add this helper near other functions
 const uploadFilesToLocalBackend = async () => {
@@ -455,7 +621,7 @@ const uploadFilesToLocalBackend = async () => {
   ligandFiles.forEach((f) => form.append("ligands", f));
   receptorFiles.forEach((f) => form.append("receptors", f));
 
-  const res = await axios.post("http://localhost:5005/upload-run-files", form, {
+  const res = await axios.post("http://localhost:5006/upload-run-files", form, {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 0, // uploads can be large; avoid short timeouts
   });
@@ -531,7 +697,7 @@ const handleRun = async () => {
     runForm.append("upload_job_id", uploadJob.job_id || "");
 
     const runRes = await axios.post(
-      "http://localhost:5005/run-script",
+      "http://localhost:5006/run-script",
       runForm,
       { timeout: 0 } // script can take a long time
     );
@@ -541,28 +707,9 @@ const handleRun = async () => {
 
     alert("🚀 Docking started locally.");
     // 4) Start polling the local backend
-    startPollingJob(jobId);
+    startPollingJobWithPlip(jobId, uploadJob);
 
     // Optional: poll for completion and then cleanup upload files
-    const autoCleanup = setInterval(async () => {
-      try {
-        const st = await axios.get(`http://localhost:5005/run-status/${jobId}`);
-        if (st.data && (st.data.status === "finished" || st.data.status === "failed" || st.data.status === "canceled")) {
-          clearInterval(autoCleanup);
-          // delete uploaded files now that the run is finished
-          if (uploadJob && uploadJob.job_id) {
-            try {
-              await axios.delete(`http://localhost:5005/cleanup/${uploadJob.job_id}`);
-              console.log("Upload job cleaned:", uploadJob.job_id);
-            } catch (err) {
-              console.warn("Failed to cleanup upload job:", err);
-            }
-          }
-        }
-      } catch (e) {
-        clearInterval(autoCleanup);
-      }
-    }, 2000);
 
   } catch (err) {
     setIsRunning(false);
@@ -570,7 +717,7 @@ const handleRun = async () => {
     // If upload happened but run failed, try cleanup
     try {
       if (uploadJob && uploadJob.job_id) {
-        await axios.delete(`http://localhost:5005/cleanup/${uploadJob.job_id}`);
+        await axios.delete(`http://localhost:5006/cleanup/${uploadJob.job_id}`);
       }
     } catch (cleanupErr) {
       console.warn("cleanup failed", cleanupErr);
@@ -583,7 +730,7 @@ const handleRun = async () => {
 useEffect(() => {
   async function checkDeps() {
     try {
-      const res = await axios.get("http://localhost:5005/check-dependencies");
+      const res = await axios.get("http://localhost:5006/check-dependencies");
 
       // backend might return { checks: {...} } or { vina: true, ... }
       const checks = (res.data && (res.data.checks || res.data)) || {};
@@ -903,7 +1050,7 @@ const installDependency = async (toolName) => {
 
   try {
     const res = await axios.post(
-      `http://localhost:5005/install-dependency?name=${toolName}`
+      `http://localhost:5006/install-dependency?name=${toolName}`
     );
     const installId = res.data.install_id;
 
@@ -911,7 +1058,7 @@ const installDependency = async (toolName) => {
     const poll = setInterval(async () => {
       try {
         const status = await axios.get(
-          `http://localhost:5005/install-status/${installId}`
+          `http://localhost:5006/install-status/${installId}`
         );
 
         setInstallLog(status.data.log_tail);
@@ -921,7 +1068,7 @@ const installDependency = async (toolName) => {
           setInstallingTool(null);
 
           // re-check dependencies
-          const res2 = await axios.get("http://localhost:5005/check-dependencies");
+          const res2 = await axios.get("http://localhost:5006/check-dependencies");
           setDependencies(res2.data.checks);
 
           alert(`✔ ${toolName} installed successfully.`);
@@ -953,32 +1100,70 @@ const handleGenerateScript = async () => {
 
     const formData = buildFormData();
 
-    const response = await axios.post(
-      "http://127.0.0.1:8000/docking/generate-script",
-      formData,
-      { responseType: "blob" }   // 🔥 REQUIRED FOR DOWNLOAD
-    );
+    // 🔍 DEBUG: Check PLIP state
+    console.log("🔍 PLIP Enabled:", enablePlip);
+    
+    if (enablePlip) {
+      // ========================================
+      // PLIP IS CHECKED → Download ZIP
+      // ========================================
+      console.log("📦 Downloading ZIP (vsframework.py + plip_analysis.py)");
+      
+      const response = await axios.post(
+        "http://127.0.0.1:8000/docking/generate-scripts-zip",
+        formData,
+        { responseType: "blob" }
+      );
 
-    const blob = new Blob([response.data], { type: "text/plain" });
-    const url = window.URL.createObjectURL(blob);
+      const blob = new Blob([response.data], { type: "application/zip" });
+      const url = window.URL.createObjectURL(blob);
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "vsframework.py";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "docking_scripts.zip";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-    window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(url);
+
+      alert("✅ ZIP downloaded with both scripts!");
+      
+    } else {
+      // ========================================
+      // PLIP IS UNCHECKED → Download single file
+      // ========================================
+      console.log("📄 Downloading single file (vsframework.py only)");
+      
+      const response = await axios.post(
+        "http://127.0.0.1:8000/docking/generate-script",
+        formData,
+        { responseType: "blob" }
+      );
+
+      const blob = new Blob([response.data], { type: "text/x-python" });
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "vsframework.py";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      window.URL.revokeObjectURL(url);
+
+      alert("✅ Single file downloaded (vsframework.py)!");
+    }
 
     setIsLoading(false);
+    
   } catch (err) {
     setIsLoading(false);
-    console.error("Script generation failed:", err);
-    alert("❌ Failed to generate script: " + (err.response?.data?.detail || err.message));
+    console.error("❌ Script generation failed:", err);
+    alert("❌ Failed to generate scripts: " + (err.response?.data?.detail || err.message));
   }
 };
-
 
 
   return (
@@ -1005,7 +1190,7 @@ const handleGenerateScript = async () => {
       </div>
 
       <div className="bg-green-50 p-3 rounded-md mb-4 text-sm text-gray-800 border border-green-200">
-        <strong>➡ To RUN DOCKING NOW inside the website:</strong>
+        <strong>➡ To RUN DOCKING NOW inside the frameworkvs:</strong>
         <br />
         Only ensure the <strong>output folder path</strong> is a valid full absolute path.
       </div>
@@ -1597,7 +1782,109 @@ Blind Docking (auto-box over receptor surface)
           </p>
         </div>
 
-        
+        {/* PLIP Analysis Configuration */}
+<div className="mb-8 p-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border-2 border-purple-200">
+  <h3 className="text-xl font-semibold text-purple-700 mb-4"> PLIP Analysis (Optional)</h3>
+  
+  <div className="mb-4">
+    <label className="flex items-center text-gray-700 font-medium">
+      <input
+        type="checkbox"
+        className="mr-2 w-4 h-4"
+        checked={enablePlip}
+        onChange={(e) => setEnablePlip(e.target.checked)}
+      />
+      Enable PLIP Analysis
+    </label>
+    <p className="text-sm text-gray-500 mt-1 ml-6">
+      Generate protein-ligand interaction profiling script alongside docking script
+    </p>
+  </div>
+
+  {enablePlip && (
+    <div className="space-y-4 ml-6 p-4 bg-white rounded-md border border-purple-100">
+      
+      {/* Max Poses */}
+      <div>
+        <label className="block font-medium text-gray-700 mb-1">
+          Max Poses to Analyze (1-20)
+        </label>
+        <input
+          type="number"
+          min="1"
+          max="20"
+          value={plipMaxPoses}
+          onChange={(e) => setPlipMaxPoses(Math.min(20, Math.max(1, parseInt(e.target.value) || 1)))}
+          className="w-full p-3 border border-gray-300 rounded-md"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Number of top-scoring poses to analyze per ligand
+        </p>
+      </div>
+
+      {/* Max Workers */}
+      <div>
+        <label className="block font-medium text-gray-700 mb-1">
+          Parallel Workers
+        </label>
+        <input
+          type="number"
+          min="1"
+          value={plipMaxWorkers}
+          onChange={(e) => setPlipMaxWorkers(Math.max(1, parseInt(e.target.value) || 1))}
+          className="w-full p-3 border border-gray-300 rounded-md"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Number of parallel workers for PLIP analysis
+        </p>
+      </div>
+
+      {/* Boolean Options */}
+      <div className="grid grid-cols-2 gap-4">
+        <label className="flex items-center text-gray-700">
+          <input
+            type="checkbox"
+            className="mr-2"
+            checked={plipRemoveWaters}
+            onChange={(e) => setPlipRemoveWaters(e.target.checked)}
+          />
+          Remove Waters
+        </label>
+
+        <label className="flex items-center text-gray-700">
+          <input
+            type="checkbox"
+            className="mr-2"
+            checked={plipRemoveIons}
+            onChange={(e) => setPlipRemoveIons(e.target.checked)}
+          />
+          Remove Ions
+        </label>
+
+        <label className="flex items-center text-gray-700">
+          <input
+            type="checkbox"
+            className="mr-2"
+            checked={plipAddHydrogens}
+            onChange={(e) => setPlipAddHydrogens(e.target.checked)}
+          />
+          Add Hydrogens
+        </label>
+
+        <label className="flex items-center text-gray-700">
+          <input
+            type="checkbox"
+            className="mr-2"
+            checked={plipKeepHetero}
+            onChange={(e) => setPlipKeepHetero(e.target.checked)}
+          />
+          Keep Heteroatoms
+        </label>
+      </div>
+
+    </div>
+  )}
+</div>
 
 <div className="bg-white p-4 rounded shadow mt-6">
   <h3 className="font-bold text-lg mb-2">🧩 Dependency Installer</h3>
@@ -1794,7 +2081,37 @@ Blind Docking (auto-box over receptor surface)
 
 </div>  {/* CLOSE INNER MAIN WRAPPER */}
 </div>  {/* CLOSE PAGE WRAPPER */}
+{/* Instructions Section */}
 
+{!isRunning && (
+  <div className="max-w-5xl mx-auto mt-6 mb-6 space-y-4">
+    {/* Generate Script Instructions */}
+    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-xl shadow-md">
+      <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <span className="text-xl">📝</span> Generate Script Option
+      </p>
+      <ul className="text-xs text-gray-700 space-y-2 text-left">
+        <li>✓ Click <strong>"Generate Docking Script"</strong> to download the script</li>
+        <li>✓ Run the script anywhere (local machine, another computer, cluster, etc.)</li>
+        <li>✓ No need for the local backend - completely portable</li>
+        <li>✓ Full control over execution environment</li>
+      </ul>
+    </div>
+
+    {/* Run Now Instructions */}
+    <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-xl shadow-md">
+      <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <span className="text-xl">▶️</span> Run Docking Now Option
+      </p>
+      <ul className="text-xs text-gray-700 space-y-2 text-left">
+        <li>✓ <strong>Step 1:</strong> Download local backend from <a href="https://github.com/Naaji9/FrameworkVS-3.0/blob/da911218a54835a845c94df4158e16735a450827/local%20backend%20main.zip" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">GitHub</a></li>
+        <li>✓ <strong>Step 2:</strong> Open terminal in the backend folder</li>
+        <li>✓ <strong>Step 3:</strong> Run: <code className="bg-gray-200 px-2 py-1 rounded">python3 main.py</code></li>
+        <li>✓ <strong>Step 4:</strong> Come back here and click <strong>"▶️ Run Docking Now"</strong></li>
+      </ul>
+    </div>
+  </div>
+)}
 {/* Footer pinned to bottom */}
 <footer className="relative z-10 text-center text-sm text-gray-600 py-4">
   © Combi-Lab VS 3.0 2025. All rights reserved.

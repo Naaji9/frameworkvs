@@ -4,11 +4,15 @@ import ScoringForm from "../components/analysis/ScoringForm";
 import ResultsTable from "../components/analysis/ResultsTable";
 import ConverterForm from "../components/analysis/ConverterForm";
 import AlignReceptors from "../components/analysis/AlignReceptors";
+import RFLScoreForm from "../components/analysis/RFLScoreForm";
+import MolecularVisualization from "../components/analysis/MolecularVisualization"; 
 
 import plipImg from "../assets/plip.png";
-import scoringImg from "../assets/scoring.jpg";
+import scoringImg from "../assets/scoring1.jpg"; 
+import rflImg from "../assets/rfl3.jpg";
 import converterImg from "../assets/converter.jpg";
 import alignImg from "../assets/align.jpg";
+import visualizeImg from "../assets/visualize2.jpg"; 
 
 export default function AdvancedAnalysisPage() {
   const [selectedAction, setSelectedAction] = useState("");
@@ -22,18 +26,32 @@ export default function AdvancedAnalysisPage() {
 
   const actions = [
     {
+      key: "visualize",
+      title: "3D Molecular Visualization",
+      desc: "Visualize docking results, analyze interactions, and explore structures in 3D.",
+      img: visualizeImg,
+      tags: ["3D", "plip", "interactive"],
+    },
+    {
       key: "plip",
       title: "PLIP Interaction Analysis",
       desc: "Analyze ligand–receptor interactions using PLIP.",
       img: plipImg,
-      tags: ["protein", "ligand"],
+      tags: ["protein", "ligand", "interactions"],
+    },
+    {
+      key: "rfl-scoring",
+      title: "RFL-Score ML Scoring function",
+      desc: "Random Forest + Lasso ML scoring for pose rescoring.",
+      img: rflImg,
+      tags: ["ML", "scoring", "RFL+Lasso"],
     },
     {
       key: "scoring",
-      title: "ML Scoring",
-      desc: "Machine learning scoring for docking results.",
+      title: "Traditional Scoring",
+      desc: "Classical scoring functions for docking results.",
       img: scoringImg,
-      tags: ["ML", "docking"],
+      tags: ["scoring", "docking", "vina"],
     },
     {
       key: "converter",
@@ -42,13 +60,7 @@ export default function AdvancedAnalysisPage() {
       img: converterImg,
       tags: ["utility", "formats"],
     },
-    {
-      key: "align-receptors",
-      title: "Align Receptors",
-      desc: "Align multiple receptor structures.",
-      img: alignImg,
-      tags: ["protein", "alignment"],
-    },
+
   ];
 
   const cardClick = (key) => {
@@ -67,10 +79,13 @@ export default function AdvancedAnalysisPage() {
   return (
     <div className="bg-black-200 p-6 max-w-5xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Advanced Analysis</h1>
-      <span className="block mt-10 mb-6 text-4xl font-bold text-blue-700 dark:text-blue-400 tracking-tight"> Advanced Analysis Tools </span>
-      {/* ---------------- CARD GRID ---------------- */}
+      <span className="block mt-10 mb-6 text-4xl font-bold text-blue-700 dark:text-blue-400 tracking-tight">
+        Advanced Analysis Tools
+      </span>
+      
+      {/* ---------------- CARD GRID (2 cards per row) ---------------- */}
       {!selectedAction && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-10 animate-fadeIn">
+        <div className="grid grid-cols-2 gap-6 mb-10 animate-fadeIn">
           {actions.map((a) => (
             <div
               key={a.key}
@@ -79,7 +94,7 @@ export default function AdvancedAnalysisPage() {
                          overflow-hidden border border-gray-300 bg-white
                          hover:-translate-y-1 hover:shadow-xl transition transform"
             >
-              {/* ✔ Click animated border */}
+              {/* ✓ Click animated border */}
               {clickedKey === a.key && (
                 <span className="border-animation"></span>
               )}
@@ -122,7 +137,13 @@ export default function AdvancedAnalysisPage() {
             ← Back to Tools
           </button>
 
+          {/* NEW: 3D Molecular Visualization */}
+          {selectedAction === "visualize" && <MolecularVisualization />}
+          
           {selectedAction === "plip" && <PlipForm />}
+          
+          {selectedAction === "rfl-scoring" && <RFLScoreForm />}
+          
           {selectedAction === "scoring" && (
             <>
               <ScoringForm

@@ -13,10 +13,71 @@ def generate_optimized_docking_script(
     cpu: int = 8,
     vina_cores: int = 2,
     chunk_mode: str = "no",
+    enable_plip: bool = False,
     save_path: str = "outputs/vsframework.py",
-    return_as_text: bool = False          # <── FIXED
+    return_as_text: bool = False
 ):
     CHUNK_SIZE = 1000 if chunk_mode == "yes" else 0
+
+    # ✅ CONDITIONAL: Only include PLIP variables if enabled
+    plip_globals = ""
+    plip_function = ""
+    plip_call = ""
+    
+    if enable_plip:
+        plip_globals = f"""
+ENABLE_PLIP = True
+PLIP_SCRIPT_PATH = "plip_analysis.py"
+"""
+        plip_function = """
+# === PLIP Auto-Runner ===
+def run_plip_if_enabled():
+    \"\"\"Automatically run PLIP analysis if enabled and script exists\"\"\"
+    if not ENABLE_PLIP:
+        print("\\n⭐ PLIP analysis disabled, skipping...")
+        return
+    
+    if not os.path.exists(PLIP_SCRIPT_PATH):
+        print(f"\\n⚠️  PLIP script not found: {PLIP_SCRIPT_PATH}")
+        print("    Make sure plip_analysis.py is in the same folder.")
+        return
+    
+    print("\\n" + "="*80)
+    print("🧬 DOCKING COMPLETE - STARTING PLIP ANALYSIS")
+    print("="*80)
+    print(f"📂 Analyzing docking results from: {output_path}")
+    print(f"🔬 PLIP output will be saved to: {output_path}/plip_analysis/")
+    print("="*80 + "\\n")
+    
+    try:
+        result = subprocess.run(
+            ["python3", PLIP_SCRIPT_PATH],
+            check=True,
+            capture_output=False  # Show PLIP output in real-time
+        )
+        print("\\n" + "="*80)
+        print("✅ PLIP ANALYSIS COMPLETED SUCCESSFULLY!")
+        print("="*80)
+    except subprocess.CalledProcessError as e:
+        print("\\n" + "="*80)
+        print(f"❌ PLIP analysis failed with error code: {e.returncode}")
+        print("="*80)
+        print("⚠️  Don't worry - your docking results are safe!")
+        print(f"    Check {output_path} for docking results.")
+    except FileNotFoundError:
+        print("\\n❌ Error: python3 not found. Please ensure Python 3 is installed.")
+    except Exception as e:
+        print(f"\\n❌ Unexpected error during PLIP analysis: {e}")
+        print("⚠️  Docking results are safe and available.")
+"""
+        plip_call = """
+    # Auto-run PLIP analysis if enabled
+    run_plip_if_enabled()"""
+    else:
+        # When PLIP is disabled, add nothing
+        plip_globals = ""
+        plip_function = ""
+        plip_call = ""
 
     script = f"""#!/usr/bin/env python
 import os
@@ -26,7 +87,7 @@ import csv
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 
-CHUNK_SIZE = {CHUNK_SIZE}
+CHUNK_SIZE = {CHUNK_SIZE}{plip_globals}
 
 # === Shared Progress Trackers ===
 progress_counter = multiprocessing.Value('i', 0)
@@ -111,7 +172,7 @@ receptors = convert_all(load_receptors(receptor_folder))
 
 # === Vina Command & Output ===
 def vina_command(ligand, receptor, center_str, output_dir):
-    out_file = os.path.join(output_dir, f"{{os.path.basename(receptor)[:10]}}_{{os.path.splitext(os.path.basename(ligand))[0]}}_{{center_str}}.pdbqt")
+    out_file = os.path.join(output_dir, f"{{os.path.basename(receptor)[:11]}}_{{os.path.splitext(os.path.basename(ligand))[0]}}_{{center_str}}.pdbqt")
     return [
         "vina",
         "--ligand", ligand,
@@ -155,7 +216,7 @@ def generate_tasks(ligands, receptors):
 def run_task(task, checkpoint_file, completed):
     cmd, label, out_file = task
     if label in completed:
-        print(f"✔ Skipping: {{label}}")
+        print(f"✓ Skipping: {{label}}")
         return
 
     start = time.time()
@@ -163,7 +224,7 @@ def run_task(task, checkpoint_file, completed):
         progress_counter.value += 1
         percent = int((progress_counter.value / TOTAL_TASKS) * 100)
         with print_lock:
-            print(f"🔷🔷 Progress: {{progress_counter.value}}/{{TOTAL_TASKS}} ({{percent}}%)")
+            print(f"🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷 Progress: {{progress_counter.value}}/{{TOTAL_TASKS}} ({{percent}}%)")
 
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
@@ -233,7 +294,7 @@ def extract_scores():
         print(f"📊 Top {{len(top_hits)}} hits saved to: {{top_csv}}")
     else:
         print("⚠️ No scores found to write.")
-
+{plip_function}
 # === Main Runner ===
 def run():
     global TOTAL_TASKS, failed_counter
@@ -248,12 +309,12 @@ def run():
     total_tasks = 0
 
     for chunk in ligand_chunks:
-        print(f"\\n📦 Processing chunk {{chunk_counter}}/{{total_chunks}}...")
+        print(f"\\n Processing chunk {{chunk_counter}}/{{total_chunks}}...")
         chunk_counter += 1
         tasks = generate_tasks(chunk, receptors)
         TOTAL_TASKS = len(tasks)
         total_tasks += TOTAL_TASKS
-        print(f"🔄 Total tasks in this chunk: {{TOTAL_TASKS}}")
+        print(f"📄 Total tasks in this chunk: {{TOTAL_TASKS}}")
 
         with ProcessPoolExecutor(max_workers=max_workers) as pool:
             futures = [pool.submit(run_task, task, checkpoint_file, completed) for task in tasks]
@@ -267,9 +328,11 @@ def run():
     print(f"\\n☑️ All chunks completed. Total docking tasks processed: {{total_tasks}}")
     print(f"🟢 Success: {{success}} / {{total_tasks}}")
     print(f"🔴 Failed: {{failed}}")
-    print(f"⏱️ Docking completed in {{dur:.2f}} seconds ({{dur_minutes:.2f}} minutes).")
+    print(f"⏱ Docking completed in {{dur:.2f}} seconds ({{dur_minutes:.2f}} minutes).")
 
-    extract_scores()
+    print(f"GENERATED BY: COMBIVS FRAMEWORKVS 3.0")
+
+    extract_scores(){plip_call}
 
 if __name__ == "__main__":
     run()
