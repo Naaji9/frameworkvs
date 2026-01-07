@@ -19,10 +19,25 @@ export default function NewDocking() {
     const [showAllReceptors, setShowAllReceptors] = useState(false);
     const [isBlindDocking, setIsBlindDocking] = useState(false);
     const [viewerMode, setViewerMode] = useState("cartoon");
+    const [isRunning, setIsRunning] = useState(false);
+    const [runJobId, setRunJobId] = useState(null);
+    const runPollRef = useRef(null); // to keep interval id
+    const [installingTool, setInstallingTool] = useState(null);
     const [ligandPathStatus, setLigandPathStatus] = useState({ valid: true, reason: "", bad_part: "" });
      const [receptorPathStatus, setReceptorPathStatus] = useState({ valid: true, reason: "", bad_part: "" });
     const [terminalOutput, setTerminalOutput] = useState([]);
+    const [runProgress, setRunProgress] = useState(0);
+    const [runStatus, setRunStatus] = useState("idle");
+    const [installLog, setInstallLog] = useState("");
+    const [showTerminal, setShowTerminal] = useState(false);
     const terminalRef = useRef(null);
+    const [dependencies, setDependencies] = useState({
+     vina: false,
+     openbabel: false,
+     mgltools: false,
+     python: true,
+     local_generator: false
+    });
 
 
 
@@ -58,9 +73,9 @@ export default function NewDocking() {
     const [errors, setErrors] = useState({});
     const [isInitialSet, setIsInitialSet] = useState(!!localStorage.getItem("basePath"));
     const [chunkMode, setChunkMode] = useState("no");
-    const [systemCpu, setSystemCpu] = useState(1);
-    const [userCpu, setUserCpu] = useState(1);
-    const [vinaThreads, setVinaThreads] = useState(1);
+    const [systemCpu, setSystemCpu] = useState(0);
+    const [userCpu, setUserCpu] = useState(0);
+    const [vinaThreads, setVinaThreads] = useState(0);
     const [recommendedVina, setRecommendedVina] = useState(0);
     const [cpuRecommendation, setCpuRecommendation] = useState({
       vinaCores: 0,
@@ -118,7 +133,7 @@ const normalizeEnteredPath = (p) => {
 };
 
 
-// ✅ UPDATED VALIDATION WITH AUTO-SCROLL AND CPU CHECKS
+// ✅ UPDATED VALIDATION WITH AUTO-SCROLL
 const validateForm = () => {
   const newErrors = {};
   let firstErrorField = null;
@@ -139,27 +154,6 @@ const validateForm = () => {
   } else if (!receptorPath) {
     newErrors.receptorPath = "Receptor Path is required";
     if (!firstErrorField) firstErrorField = "receptor-section";
-  }
-
-  // CPU validation
-  if (systemCpu <= 0) {
-    newErrors.systemCpu = "System CPU must be greater than 0";
-    if (!firstErrorField) firstErrorField = "cpu-section";
-  }
-
-  if (userCpu <= 0) {
-    newErrors.userCpu = "User CPU must be greater than 0";
-    if (!firstErrorField) firstErrorField = "cpu-section";
-  }
-
-  if (vinaThreads <= 0) {
-    newErrors.vinaThreads = "Vina Threads must be greater than 0";
-    if (!firstErrorField) firstErrorField = "cpu-section";
-  }
-
-  if (userCpu > systemCpu && systemCpu > 0) {
-    newErrors.userCpu = "Cannot exceed system CPU count";
-    if (!firstErrorField) firstErrorField = "cpu-section";
   }
 
   setErrors(newErrors);
@@ -397,26 +391,26 @@ useEffect(() => {
 }, [terminalOutput]);
 
 
-  // useEffect(() => {
-  //   if (vinaThreads > 0 && userCpu > 0) {
-  //     const maxWorkers = Math.max(1, Math.floor(userCpu / vinaThreads));
-  //     const totalUsage = vinaThreads * maxWorkers;
-  //     const isOverride = vinaThreads !== recommendedVina;
-  //     const overrideTooHigh = vinaThreads > recommendedVina;
+  useEffect(() => {
+    if (vinaThreads > 0 && userCpu > 0) {
+      const maxWorkers = Math.max(1, Math.floor(userCpu / vinaThreads));
+      const totalUsage = vinaThreads * maxWorkers;
+      const isOverride = vinaThreads !== recommendedVina;
+      const overrideTooHigh = vinaThreads > recommendedVina;
 
-  //     setCpuRecommendation((prev) => ({
-  //       ...prev,
-  //       vinaCores: vinaThreads,
-  //       maxWorkers,
-  //       totalUsage,
-  //       overrideWarning: isOverride,
-  //       overrideDetail: isOverride
-  //         ? `⚠️ You set Vina threads to ${vinaThreads} (recommended: ${recommendedVina}).` +
-  //           (overrideTooHigh ? ` This may reduce parallel efficiency.` : ` You reduced the thread count below recommendation.`)
-  //         : ""
-  //     }));
-  //   }
-  // }, [vinaThreads]);
+      setCpuRecommendation((prev) => ({
+        ...prev,
+        vinaCores: vinaThreads,
+        maxWorkers,
+        totalUsage,
+        overrideWarning: isOverride,
+        overrideDetail: isOverride
+          ? `⚠️ You set Vina threads to ${vinaThreads} (recommended: ${recommendedVina}).` +
+            (overrideTooHigh ? ` This may reduce parallel efficiency.` : ` You reduced the thread count below recommendation.`)
+          : ""
+      }));
+    }
+  }, [vinaThreads]);
 
   // Build the same FormData used for both Generate and Run
 const buildFormData = () => {
@@ -1700,126 +1694,73 @@ Blind Docking (auto-box over receptor surface)
 </div>
 
 {/* ⚙️ CPU & Vina Configuration */}
-    <div id="cpu-section" className="mb-10 bg-gray-50 p-6 border border-blue-200 rounded-lg">
+    <div className="mb-10 bg-gray-50 p-6 border border-blue-200 rounded-lg">
       <h3 className="text-xl font-semibold text-blue-700 mb-4">⚙️ CPU & Vina Configuration</h3>
-      
-      {/* ⚠️ Warning banner if ANY value is 0 */}
-      {(systemCpu <= 0 || userCpu <= 0 || vinaThreads <= 0) && (
-        <div className="mb-4 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
-          <p className="text-red-700 font-bold flex items-center gap-2">
-            <span className="text-2xl">⚠️</span> CPU Configuration Required
-          </p>
-          <ul className="text-sm text-red-600 mt-2 space-y-1">
-            {systemCpu <= 0 && <li>• System CPU must be greater than 0</li>}
-            {userCpu <= 0 && <li>• User CPU must be greater than 0</li>}
-            {vinaThreads <= 0 && <li>• Vina Threads must be greater than 0</li>}
-          </ul>
-          <p className="text-xs text-red-500 mt-2">
-            ⛔ Script generation will be blocked until all CPU settings are configured.
-          </p>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
-          <label className="block font-medium text-gray-700">
-            Total CPUs on Your System <span className="text-red-500">*</span>
-          </label>
+          <label className="block font-medium text-gray-700">Total CPUs on Your System</label>
           <input
             type="number"
-            className={`w-full p-3 mt-1 border rounded-md ${
-              errors.systemCpu || systemCpu <= 0 
-                ? "border-red-500 bg-red-50" 
-                : "border-gray-300"
-            }`}
+            className="w-full p-3 mt-1 border border-gray-300 rounded-md"
             value={systemCpu}
-            onChange={(e) => setSystemCpu(parseInt(e.target.value) || 0)}
+            onChange={(e) => setSystemCpu(parseInt(e.target.value))}
             placeholder="e.g., 32"
-            min="1"
           />
-          {errors.systemCpu && (
-            <p className="text-red-500 text-xs mt-1">{errors.systemCpu}</p>
-          )}
         </div>
 
         <div>
-          <label className="block font-medium text-gray-700">
-            CPUs You Want to Use <span className="text-red-500">*</span>
-          </label>
+          <label className="block font-medium text-gray-700">CPUs You Want to Use</label>
           <input
             type="number"
-            className={`w-full p-3 mt-1 border rounded-md ${
-              errors.userCpu || userCpu <= 0 
-                ? "border-red-500 bg-red-50" 
-                : "border-gray-300"
-            }`}
+            className="w-full p-3 mt-1 border border-gray-300 rounded-md"
             value={userCpu}
-            onChange={(e) => setUserCpu(parseInt(e.target.value) || 0)}
+            onChange={(e) => setUserCpu(parseInt(e.target.value))}
             placeholder="e.g., 20"
-            min="1"
           />
-          {errors.userCpu && (
-            <p className="text-red-500 text-xs mt-1">{errors.userCpu}</p>
-          )}
         </div>
       </div>
 
-
-      <div className="mt-4">
-        <label className="block font-medium text-gray-700">
-          🧪 Vina Threads per Task <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="number"
-          className={`w-full p-3 mt-1 border rounded-md ${
-            errors.vinaThreads || vinaThreads <= 0 
-              ? "border-red-500 bg-red-50" 
-              : "border-gray-300"
-          }`}
-          value={vinaThreads}
-          onChange={(e) => setVinaThreads(parseInt(e.target.value) || 0)}
-          min="1"
-          placeholder="e.g., 4"
-        />
-        {errors.vinaThreads && (
-          <p className="text-red-500 text-xs mt-1">{errors.vinaThreads}</p>
-        )}
-        <p className="text-sm text-gray-500 mt-1">
-          Set the number of threads each AutoDock Vina task should use. 
-          Example: If you select <b>CPUs</b> = 6 and <b>Vina Threads</b> per Task = 2, 
-          then 3 docking tasks will run in parallel <b>(6 ÷ 2 = 3)</b>.
-        </p>
-      </div>
-      {/* Resource allocation preview - only show when valid */}
-      {systemCpu > 0 && userCpu > 0 && vinaThreads > 0 && (
+      {/* {cpuRecommendation.vinaCores > 0 && (
         <div className="mt-6">
           <div className="text-gray-700 bg-white p-4 border border-green-300 rounded-md">
-            <p className="mb-2 font-medium text-green-700"> Resource Allocation Preview:</p>
-            <ul className="list-disc list-inside text-sm space-y-1">
-              <li>Vina threads per task: <strong>{vinaThreads}</strong></li>
-              <li>Parallel workers: <strong>{cpuRecommendation.maxWorkers}</strong></li>
-              <li>Total expected CPU usage: <strong>{cpuRecommendation.totalUsage} / {userCpu}</strong></li>
+            <p className="mb-1 font-medium">☑️ Recommendation:</p>
+            <ul className="list-disc list-inside text-sm">
+              <li>Vina threads per task: {cpuRecommendation.vinaCores}</li>
+              <li>Parallel workers: {cpuRecommendation.maxWorkers}</li>
+              <li>Total expected CPU usage: {cpuRecommendation.totalUsage} / {userCpu}</li>
             </ul>
             {cpuRecommendation.warning && (
-              <p className="text-yellow-600 text-sm mt-2">⚠️ {cpuRecommendation.warning}</p>
+              <p className="text-yellow-600 text-sm mt-2">{cpuRecommendation.warning}</p>
             )}
             {cpuRecommendation.overrideWarning && (
-              <p className="text-orange-600 text-sm mt-2">{cpuRecommendation.overrideDetail}</p>
+              <p className="text-red-600 text-sm mt-2">{cpuRecommendation.overrideDetail}</p>
             )}
-          </div>
-        </div>
-      )}
+          </div> */}
 
-      <div className="mt-4">
-        <label className="block font-medium text-gray-700">🧪 Vina score best top-N</label>
-        <input
-          type="number"
-          className="w-full p-3 mt-1 border border-gray-300 rounded-md"
-          value={topbest}
-          onChange={(e) => setTopbest(parseInt(e.target.value))}
-        />
-        <p className="text-sm text-gray-500 mt-1">Please input the best score you want</p>
-      </div>
+          <div className="mt-4">
+            <label className="block font-medium text-gray-700">🧪 Vina Threads per Task (optional override)</label>
+            <input
+              type="number"
+              className="w-full p-3 mt-1 border border-gray-300 rounded-md"
+              value={vinaThreads}
+              onChange={(e) => setVinaThreads(parseInt(e.target.value))}
+            />
+            <p className="text-sm text-gray-500 mt-1">Set the number of threads each AutoDock Vina task should use. Example : If you select <b>CPUs</b> = 6 and <b>Vina Threads</b> per Task = 2, then 3 docking tasks will run in parallel <b>(6 ÷ 2 = 3).</b>.</p>
+          </div>
+
+          <div>
+            <label className="block font-medium text-gray-700">🧪 Vina score best top-N </label>
+            <input
+              type="number"
+              className="w-full p-3 mt-1 border border-gray-300 rounded-md"
+              value={topbest}
+              onChange={(e) => setTopbest(parseInt(e.target.value))}
+              
+            />
+            <p className="text-sm text-gray-500 mt-1">Please input the best score you want </p>
+          {/* </div> */}  
+        </div> 
+      {/* )} */}
     </div>
 
 
@@ -1945,6 +1886,33 @@ Blind Docking (auto-box over receptor surface)
   )}
 </div>
 
+<div className="bg-white p-4 rounded shadow mt-6">
+  <h3 className="font-bold text-lg mb-2">🧩 Dependency Installer</h3>
+
+  {!dependencies.vina && (
+    <button 
+      className="bg-blue-600 text-white px-4 py-2 rounded"
+      onClick={() => installDependency("vina")}
+    >
+      Install AutoDock Vina
+    </button>
+  )}
+
+  {!dependencies.openbabel && (
+    <button 
+      className="bg-green-600 text-white px-4 py-2 rounded ml-2"
+      onClick={() => installDependency("openbabel")}
+    >
+      Install OpenBabel
+    </button>
+  )}
+
+  {installingTool && (
+    <pre className="bg-black text-green-400 p-3 mt-3 rounded max-h-52 overflow-y-auto">
+      {installLog}
+    </pre>
+  )}
+</div>
 
 
 
@@ -1952,42 +1920,198 @@ Blind Docking (auto-box over receptor surface)
 <div className="text-center mt-6">
   <button
     onClick={handleGenerateScript}
-    disabled={isLoading || systemCpu <= 0 || userCpu <= 0 || vinaThreads <= 0}
-    className={`bg-blue-600 hover:bg-blue-700 text-white py-3 px-8 rounded-full shadow-md transition-all ${
-      (isLoading || systemCpu <= 0 || userCpu <= 0 || vinaThreads <= 0) ? "opacity-50 cursor-not-allowed" : ""
+    disabled={isLoading}
+    className={`bg-blue-600 hover:bg-blue-700 text-white py-3 px-8 rounded-full shadow-md ${
+      isLoading ? "opacity-50" : ""
     }`}
   >
     {isLoading ? "Generating..." : "Generate Docking Script"}
   </button>
-  
-  {/* Warning message below button when disabled */}
-  {(systemCpu <= 0 || userCpu <= 0 || vinaThreads <= 0) && !isLoading && (
-    <p className="text-red-600 text-sm mt-3 font-medium">
-      ⚠️ Please configure CPU settings above before generating the script
-    </p>
-  )}
+
+  <button
+    onClick={handleRun}
+    disabled={isLoading || isRunning}
+    className={`bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-full shadow-md ml-4 ${
+      isRunning ? "opacity-50" : ""
+    }`}
+  >
+    {isRunning ? `Running... (${runProgress}%)` : "▶️ Run Docking Now"}
+  </button>
 </div>
+
+
+
+{/* Status bar when running */}
+{isRunning && (
+  <div className="mt-3 text-center">
+    <div className="text-sm text-gray-700">Status: {runStatus}</div>
+
+    <div className="w-full max-w-md mx-auto bg-gray-300 h-2 rounded mt-2">
+      <div
+        style={{ width: `${runProgress}%` }}
+        className="h-2 bg-green-600 rounded"
+      ></div>
+    </div>
+  </div>
+)}
+
+{showTerminal && (
+  <div
+    style={{
+      marginTop: "30px",
+      padding: "0",
+      borderRadius: "6px",
+      border: "2px solid #444",
+      overflow: "hidden",
+      fontFamily: "monospace",
+      background: "#111",
+      width: "100%"
+    }}
+  >
+
+    {/* HEADER */}
+    <div
+      style={{
+        background: "#222",
+        color: "#fff",
+        padding: "8px 10px",
+        fontWeight: "bold",
+        borderBottom: "2px solid #333",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}
+    >
+      <span>🖥 Terminal Output</span>
+
+      <button
+        onClick={() => setShowTerminal(false)}
+        style={{
+          background: "none",
+          border: "none",
+          color: "red",
+          fontSize: "16px",
+          cursor: "pointer"
+        }}
+      >
+        ✖
+      </button>
+    </div>
+
+    {/* TERMINAL BODY */}
+    <div
+      ref={terminalRef}
+      style={{
+        background: "#5E2750",
+        color: "#eee",
+        height: "250px",
+        padding: "10px",
+        overflowY: "auto",
+        whiteSpace: "pre-wrap",
+        fontSize: "14px"
+      }}
+    >
+      {terminalOutput.map((line, idx) => (
+        <div
+          key={idx}
+          style={{
+            color: line.includes("Error") || line.includes("❌") ? "#ff4d4d" : "#eee"
+          }}
+        >
+          {line}
+        </div>
+      ))}
+    </div>
+
+    {/* MAIN STATUS */}
+    <div
+      style={{
+        background: "#222",
+        color: "#ccc",
+        padding: "10px",
+        borderTop: "2px solid #333",
+        fontSize: "13px"
+      }}
+    >
+      Status: {runStatus}
+    </div>
+
+    {/* PROGRESS BAR */}
+    <div
+      style={{
+        width: "100%",
+        height: "8px",
+        background: "#333"
+      }}
+    >
+      <div
+        style={{
+          width: `${runProgress ?? 0}%`,
+          height: "100%",
+          background: "#4caf50",
+          transition: "width 0.3s ease"
+        }}
+      />
+    </div>
+
+    {/* LIVE STATUS LINE */}
+    <div
+      style={{
+        padding: "8px 10px",
+        background: "#111",
+        color: "#4caf50",
+        fontFamily: "monospace",
+        fontSize: "14px",
+        borderTop: "1px solid #333"
+      }}
+    >
+      {runStatus === "running" &&
+        `⏳ Docking in progress… ${runProgress ?? 0}% completed`}
+      {runStatus === "queued" &&
+        "📦 Job queued, preparing environment…"}
+      {runStatus === "finished" &&
+        "✅ Docking finished successfully!"}
+      {runStatus === "failed" &&
+        "❌ Docking failed. Check logs above."}
+    </div>
+
+  </div>
+)}
+
 
 </div>  {/* CLOSE INNER MAIN WRAPPER */}
 </div>  {/* CLOSE PAGE WRAPPER */}
-
-
 {/* Instructions Section */}
-<div className="max-w-5xl mx-auto mt-6 mb-6 space-y-4">
-  {/* Generate Script Instructions */}
-  <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-xl shadow-md">
-    <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-      <span className="text-xl">📝</span> Generate Script 
-    </p>
-    <ul className="text-xs text-gray-700 space-y-2 text-left">
-      <li>✓ Click <strong>"Generate Docking Script"</strong> to download the script</li>
-      <li>✓ Run the script anywhere (local machine, another computer, cluster, etc.)</li>
-      <li>✓ No need for the local backend - completely portable</li>
-      <li>✓ Full control over execution environment</li>
-    </ul>
-  </div>
-</div>
 
+{!isRunning && (
+  <div className="max-w-5xl mx-auto mt-6 mb-6 space-y-4">
+    {/* Generate Script Instructions */}
+    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 rounded-xl shadow-md">
+      <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <span className="text-xl">📝</span> Generate Script Option
+      </p>
+      <ul className="text-xs text-gray-700 space-y-2 text-left">
+        <li>✓ Click <strong>"Generate Docking Script"</strong> to download the script</li>
+        <li>✓ Run the script anywhere (local machine, another computer, cluster, etc.)</li>
+        <li>✓ No need for the local backend - completely portable</li>
+        <li>✓ Full control over execution environment</li>
+      </ul>
+    </div>
+
+    {/* Run Now Instructions */}
+    <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-xl shadow-md">
+      <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <span className="text-xl">▶️</span> Run Docking Now Option
+      </p>
+      <ul className="text-xs text-gray-700 space-y-2 text-left">
+        <li>✓ <strong>Step 1:</strong> Download local backend from <a href="https://github.com/Naaji9/FrameworkVS-3.0/blob/da911218a54835a845c94df4158e16735a450827/local%20backend%20main.zip" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">GitHub</a></li>
+        <li>✓ <strong>Step 2:</strong> Open terminal in the backend folder</li>
+        <li>✓ <strong>Step 3:</strong> Run: <code className="bg-gray-200 px-2 py-1 rounded">python3 main.py</code></li>
+        <li>✓ <strong>Step 4:</strong> Come back here and click <strong>"▶️ Run Docking Now"</strong></li>
+      </ul>
+    </div>
+  </div>
+)}
 {/* Footer pinned to bottom */}
 <footer className="relative z-10 text-center text-sm text-gray-600 py-4">
   © Combi-Lab VS 3.0 2025. All rights reserved.

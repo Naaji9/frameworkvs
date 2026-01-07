@@ -86,8 +86,49 @@ import time
 import csv
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+import difflib
 
 CHUNK_SIZE = {CHUNK_SIZE}{plip_globals}
+
+# === SMART FIX PATH ===
+
+def fix_user_path(path: str, name: str) -> str:
+    path = path.strip().strip('"').strip("'")
+    path = os.path.expanduser(path)
+
+    if path.startswith("home/"):
+        path = "/" + path
+
+    parts = os.path.normpath(path).split(os.sep)
+    current = os.sep if path.startswith(os.sep) else os.getcwd()
+
+    for part in parts:
+        if not part:
+            continue
+
+        candidate = os.path.join(current, part)
+        if os.path.exists(candidate):
+            current = candidate
+            continue
+
+        # Try fuzzy match
+        try:
+            entries = os.listdir(current)
+        except Exception:
+            break
+
+        match = difflib.get_close_matches(part, entries, n=1, cutoff=0.6)
+        if match:
+            print(f" Fixed '{{part}}' → '{{match[0]}}'")
+            current = os.path.join(current, match[0])
+        else:
+            print(f"❌ Cannot resolve '{{part}}' in '{{current}}'")
+            return candidate
+
+    if " " in current:
+        print(f"⚠️ WARNING: '{{name}}' path contains spaces:\\n   {{current}}")
+
+    return os.path.abspath(current)
 
 # === Shared Progress Trackers ===
 progress_counter = multiprocessing.Value('i', 0)
@@ -122,6 +163,13 @@ receptor_folder = r"{receptor_folder}"
 output_path = r"{output_path}"
 os.makedirs(output_path, exist_ok=True)
 
+# Apply fixes
+ligand_folder = fix_user_path(ligand_folder, "Ligand")
+receptor_folder = fix_user_path(receptor_folder, "Receptor")
+output_path = fix_user_path(output_path, "Output")
+
+print("="*60 + "\\n")
+
 box_center = Vector3({box_center[0]}, {box_center[1]}, {box_center[2]})
 box_size = Vector3({box_size[0]}, {box_size[1]}, {box_size[2]})
 box_step = Vector3({box_step[0]}, {box_step[1]}, {box_step[2]})
@@ -135,40 +183,141 @@ max_workers = max(1, budget // vina_cores)
 using = vina_cores * max_workers
 print(f"🔵 CPUs: {{available}} | 🔴 Using: {{using}} | ⚙️ Vina cores: {{vina_cores}} | 🧵 Workers: {{max_workers}}")
 
-# === Conversion & Scanning ===
+
+# === UPDATED CONVERSION FUNCTIONS ===
 def scan_folder(folder, exts):
-    return [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(exts)]
+    \"\"\"Scan folder for files with given extensions.\"\"\"
+    files = []
+    for f in os.listdir(folder):
+        if f.lower().endswith(exts):
+            files.append(os.path.join(folder, f))
+    return files
 
 def convert_to_pdbqt(path):
+    \"\"\"Convert a single file to PDBQT format.\"\"\"
+    # If it's already PDBQT, return as is
     if path.endswith(".pdbqt"):
         return path
-    out = path.rsplit(".", 1)[0] + ".pdbqt"
-    subprocess.run([
-        "obabel", path,
-        "-O", out,
-        "--partialcharge", "gasteiger",
-        "--addhydrogens",
-        "--xr"
-    ], check=True)
-    return out
+    
+    # Generate output filename
+    out = os.path.splitext(path)[0] + ".pdbqt"
+    
+    # Skip if output already exists
+    if os.path.exists(out):
+        print(f"✓ PDBQT already exists: {{os.path.basename(out)}}")
+        return out
+    
+    print(f"🔄 Converting: {{os.path.basename(path)}} -> {{os.path.basename(out)}}")
+    
+    try:
+        subprocess.run([
+            "obabel", path,
+            "-O", out,
+            "--partialcharge", "gasteiger",
+            "--addhydrogens",
+            "--xr"
+        ], check=True, capture_output=True, text=True)
+        print(f"✓ Converted: {{os.path.basename(path)}}")
+        return out
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to convert {{os.path.basename(path)}}: {{e.stderr}}")
+        return None
 
-def convert_all(files): return [convert_to_pdbqt(f) for f in files]
+def convert_all(paths):
+    \"\"\"Convert all files/folders to PDBQT list.\"\"\"
+    all_converted = []
+    
+    for path in paths:
+        # If it's a directory, process all files in it
+        if os.path.isdir(path):
+            print(f"\\n📁 Processing directory: {{path}}")
+            # Get all supported files in directory
+            files = []
+            for ext in (".pdb", ".sdf", ".mol2", ".pdbqt"):
+                files.extend(scan_folder(path, (ext,)))
+            
+            if not files:
+                print(f"⚠️  No supported files found in directory: {{path}}")
+                continue
+                
+            # Convert all files
+            for file_path in files:
+                converted = convert_to_pdbqt(file_path)
+                if converted:
+                    all_converted.append(converted)
+        else:
+            # It's a single file
+            converted = convert_to_pdbqt(path)
+            if converted:
+                all_converted.append(converted)
+    
+    return all_converted
 
 def load_ligands(path):
+    \"\"\"Load ligands - supports both single file and directory.\"\"\"
+    print(f"\\n🟢 Loading ligands from: {{path}}")
+    
+    # Check if path exists
+    if not os.path.exists(path):
+        print(f"❌ ERROR: Ligand path does not exist: {{path}}")
+        return []
+    
+    # If it's a directory, return list of all supported files
     if os.path.isdir(path):
-        return scan_folder(path, (".pdbqt", ".sdf", ".mol2", ".pdb"))
+        files = []
+        for ext in (".pdbqt", ".sdf", ".mol2", ".pdb"):
+            files.extend(scan_folder(path, (ext,)))
+        print(f"   Found {{len(files)}} ligand files in directory")
+        return files
     else:
+        # It's a single file
+        print(f"   Processing single ligand file")
         return [path]
-
-ligands = convert_all(load_ligands(ligand_folder))
 
 def load_receptors(path):
+    \"\"\"Load receptors - supports both single file and directory.\"\"\"
+    print(f"\\n🟢 Loading receptors from: {{path}}")
+    
+    # Check if path exists
+    if not os.path.exists(path):
+        print(f"❌ ERROR: Receptor path does not exist: {{path}}")
+        return []
+    
+    # If it's a directory, return list of all supported files
     if os.path.isdir(path):
-        return scan_folder(path, (".pdbqt", ".sdf", ".mol2", ".pdb"))
+        files = []
+        for ext in (".pdbqt", ".sdf", ".mol2", ".pdb"):
+            files.extend(scan_folder(path, (ext,)))
+        print(f"   Found {{len(files)}} receptor files in directory")
+        return files
     else:
+        # It's a single file
+        print(f"   Processing single receptor file")
         return [path]
 
-receptors = convert_all(load_receptors(receptor_folder))
+# Load and convert ligands
+print("\\n" + "="*60)
+print("PROCESSING LIGANDS")
+print("="*60)
+ligand_files = load_ligands(ligand_folder)
+ligands = convert_all(ligand_files)
+
+print("\\n" + "="*60)
+print("PROCESSING RECEPTORS")
+print("="*60)
+receptor_files = load_receptors(receptor_folder)
+receptors = convert_all(receptor_files)
+
+# Check if we have any ligands/receptors
+if not ligands:
+    print("\\n❌ ERROR: No ligands to process. Exiting.")
+    exit(1)
+if not receptors:
+    print("\\n❌ ERROR: No receptors to process. Exiting.")
+    exit(1)
+
+print(f"\\n🔵 Ready to dock: {{len(ligands)}} ligands vs {{len(receptors)}} receptors")
+
 
 # === Vina Command & Output ===
 def vina_command(ligand, receptor, center_str, output_dir):
@@ -295,6 +444,7 @@ def extract_scores():
     else:
         print("⚠️ No scores found to write.")
 {plip_function}
+
 # === Main Runner ===
 def run():
     global TOTAL_TASKS, failed_counter
@@ -330,7 +480,9 @@ def run():
     print(f"🔴 Failed: {{failed}}")
     print(f"⏱ Docking completed in {{dur:.2f}} seconds ({{dur_minutes:.2f}} minutes).")
 
+    print("\\n" + "="*60)
     print(f"GENERATED BY: COMBIVS FRAMEWORKVS 3.0")
+    print("="*60)
 
     extract_scores(){plip_call}
 

@@ -759,6 +759,9 @@ export default function PlipFormOnline() {
               <span className="text-xl">🔒</span> About Local Execution
             </p>
             <ul className="text-xs text-gray-700 space-y-1 text-left">
+              <li> ✓ First download the local backend from <a href="https://github.com/Naaji9/frameworkvs" target="_blank" rel="noopener noreferrer"   
+                   style={{ color: "#1a73e8", textDecoration: "underline" }}> GitHub </a> </li>
+
               <li>✓ Your files stay on YOUR computer</li>
               <li>✓ Files are NOT uploaded to the cloud</li>
               <li>✓ Results saved to your chosen folder</li>

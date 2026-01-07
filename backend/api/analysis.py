@@ -47,260 +47,970 @@ def run_cmd(cmd: List[str]) -> Tuple[int, str, str]:
         return 999, "", str(e)
 
 
-# # ---------------------------------------------------------
-# # UNIVERSAL CONVERTER
-# # ---------------------------------------------------------
-# # ---------- PREPARATION HELPERS (receptor/ligand) ----------
-# def which_exists(cmdname: str) -> bool:
-#     return shutil.which(cmdname) is not None
+# ---------------------------------------------------------
+# UNIVERSAL CONVERTER
+# ---------------------------------------------------------
+# ---------- PREPARATION HELPERS (receptor/ligand) ----------
+def which_exists(cmdname: str) -> bool:
+    return shutil.which(cmdname) is not None
 
-# def prepare_receptor_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
-#     """
-#     Produce a docking-ready receptor .pdbqt at dst.
-#     Steps:
-#       - strip waters / non-protein (best-effort with obabel)
-#       - add hydrogens
-#       - use AutoDockTools prepare_receptor4.py if available to create pdbqt with charges
-#     Returns (ok, log)
-#     """
-#     logs = []
-#     tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.cleaned.pdb")
+def prepare_receptor_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
+    """
+    Produce a docking-ready receptor .pdbqt at dst.
+    Steps:
+      - strip waters / non-protein (best-effort with obabel)
+      - add hydrogens
+      - use AutoDockTools prepare_receptor4.py if available to create pdbqt with charges
+    Returns (ok, log)
+    """
+    logs = []
+    tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.cleaned.pdb")
 
-#     # 1) Try obabel to extract protein and remove waters/hetatm
-#     cmd_obabel = [
-#         "obabel", src, "-O", tmp_clean,
-#         "-h",        # add hydrogens
-#         "--delete", "HOH",  # attempt remove waters
-#         "--protein", # keep protein residues only
-#     ]
-#     rc, out, err = run_cmd(cmd_obabel)
-#     logs.append(" ".join(cmd_obabel))
-#     logs.append(out or "")
-#     logs.append(err or "")
+    # 1) Try obabel to extract protein and remove waters/hetatm
+    cmd_obabel = [
+        "obabel", src, "-O", tmp_clean,
+        "-h",        # add hydrogens
+        "--delete", "HOH",  # attempt remove waters
+        "--protein", # keep protein residues only
+    ]
+    rc, out, err = run_cmd(cmd_obabel)
+    logs.append(" ".join(cmd_obabel))
+    logs.append(out or "")
+    logs.append(err or "")
 
-#     if rc != 0 or not os.path.exists(tmp_clean):
-#         # fallback: copy original and try to continue
-#         tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.fallback.pdb")
-#         try:
-#             shutil.copyfile(src, tmp_clean)
-#             logs.append(f"obabel protein extraction failed (rc={rc}); using original copy as fallback.")
-#         except Exception as e:
-#             return False, "\n".join(logs + [f"Failed to copy fallback: {e}"])
+    if rc != 0 or not os.path.exists(tmp_clean):
+        # fallback: copy original and try to continue
+        tmp_clean = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_receptor.fallback.pdb")
+        try:
+            shutil.copyfile(src, tmp_clean)
+            logs.append(f"obabel protein extraction failed (rc={rc}); using original copy as fallback.")
+        except Exception as e:
+            return False, "\n".join(logs + [f"Failed to copy fallback: {e}"])
 
-#     # 2) Use AutoDockTools if available (preferred) to make pdbqt with charges
-#     if which_exists("prepare_receptor4.py"):
-#         cmd_adt = ["prepare_receptor4.py", "-r", tmp_clean, "-o", dst, "-A", "hydrogens"]
-#         rc2, out2, err2 = run_cmd(cmd_adt)
-#         logs.append(" ".join(cmd_adt))
-#         logs.append(out2 or "")
-#         logs.append(err2 or "")
-#         if rc2 == 0 and os.path.exists(dst):
-#             return True, "\n".join(logs)
-#         else:
-#             logs.append(f"prepare_receptor4.py failed (rc={rc2})")
-#     else:
-#         logs.append("prepare_receptor4.py not found in PATH; falling back to obabel pdbqt conversion (less reliable).")
+    # 2) Use AutoDockTools if available (preferred) to make pdbqt with charges
+    if which_exists("prepare_receptor4.py"):
+        cmd_adt = ["prepare_receptor4.py", "-r", tmp_clean, "-o", dst, "-A", "hydrogens"]
+        rc2, out2, err2 = run_cmd(cmd_adt)
+        logs.append(" ".join(cmd_adt))
+        logs.append(out2 or "")
+        logs.append(err2 or "")
+        if rc2 == 0 and os.path.exists(dst):
+            return True, "\n".join(logs)
+        else:
+            logs.append(f"prepare_receptor4.py failed (rc={rc2})")
+    else:
+        logs.append("prepare_receptor4.py not found in PATH; falling back to obabel pdbqt conversion (less reliable).")
 
-#     # 3) Fallback: obabel -> pdbqt with charges (best-effort)
-#     cmd_obabel2 = ["obabel", tmp_clean, "-O", dst, "--partialcharge", "gasteiger", "-h"]
-#     rc3, out3, err3 = run_cmd(cmd_obabel2)
-#     logs.append(" ".join(cmd_obabel2))
-#     logs.append(out3 or "")
-#     logs.append(err3 or "")
-#     if rc3 == 0 and os.path.exists(dst):
-#         return True, "\n".join(logs)
-#     return False, "\n".join(logs)
-
-
-# def prepare_ligand_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
-#     """
-#     Prepare ligand -> pdbqt:
-#       - generate 3D if needed, remove salts, add H
-#       - use prepare_ligand4.py if available (preferred) to set torsions & charges
-#       - fallback to obabel with gasteiger charges
-#     """
-#     logs = []
-#     tmp_3d = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_ligand.3d.sdf")
-
-#     # 1) Generate 3D + separate salts
-#     cmd3d = ["obabel", src, "-O", tmp_3d, "--gen3d", "--separate", "-h"]
-#     rc, out, err = run_cmd(cmd3d)
-#     logs.append(" ".join(cmd3d))
-#     logs.append(out or ""); logs.append(err or "")
-
-#     # prefer AutoDockTools prepare_ligand4.py
-#     if which_exists("prepare_ligand4.py"):
-#         cmd_adt = ["prepare_ligand4.py", "-l", tmp_3d, "-o", dst, "-A", "hydrogens"]
-#         rc2, out2, err2 = run_cmd(cmd_adt)
-#         logs.append(" ".join(cmd_adt))
-#         logs.append(out2 or ""); logs.append(err2 or "")
-#         if rc2 == 0 and os.path.exists(dst):
-#             return True, "\n".join(logs)
-#         else:
-#             logs.append(f"prepare_ligand4.py failed (rc={rc2})")
-#     else:
-#         logs.append("prepare_ligand4.py not found in PATH; falling back to obabel pdbqt conversion.")
-
-#     # Fallback: obabel 3D -> pdbqt with charges
-#     cmd_fallback = ["obabel", tmp_3d, "-O", dst, "--partialcharge", "gasteiger", "-h", "--gen3d"]
-#     rc3, out3, err3 = run_cmd(cmd_fallback)
-#     logs.append(" ".join(cmd_fallback))
-#     logs.append(out3 or ""); logs.append(err3 or "")
-#     if rc3 == 0 and os.path.exists(dst):
-#         return True, "\n".join(logs)
-#     return False, "\n".join(logs)
+    # 3) Fallback: obabel -> pdbqt with charges (best-effort)
+    cmd_obabel2 = ["obabel", tmp_clean, "-O", dst, "--partialcharge", "gasteiger", "-h"]
+    rc3, out3, err3 = run_cmd(cmd_obabel2)
+    logs.append(" ".join(cmd_obabel2))
+    logs.append(out3 or "")
+    logs.append(err3 or "")
+    if rc3 == 0 and os.path.exists(dst):
+        return True, "\n".join(logs)
+    return False, "\n".join(logs)
 
 
-# # ---------- ENHANCED convert_any THAT ACCEPTS 'type' ----------
-# def convert_any(in_path: str, out_path: str, role: Optional[str] = None) -> Tuple[bool, str]:
-#     """
-#     role: 'receptor' or 'ligand' or None. If out_path ends with .pdbqt
-#     we will call specialized preparers for receptor/ligand.
-#     """
-#     out_fmt = Path(out_path).suffix.lstrip(".").lower()
+def prepare_ligand_for_pdbqt(src: str, dst: str, workdir: Optional[str] = None) -> Tuple[bool,str]:
+    """
+    Prepare ligand -> pdbqt:
+      - generate 3D if needed, remove salts, add H
+      - use prepare_ligand4.py if available (preferred) to set torsions & charges
+      - fallback to obabel with gasteiger charges
+    """
+    logs = []
+    tmp_3d = os.path.join(workdir or tempfile.gettempdir(), f"{Path(src).stem}_ligand.3d.sdf")
 
-#     # If target is pdbqt, run the prep pipeline
-#     if out_fmt == "pdbqt":
-#         try:
-#             workdir = os.path.dirname(out_path) or tempfile.gettempdir()
-#             if role == "receptor":
-#                 ok, log = prepare_receptor_for_pdbqt(in_path, out_path, workdir=workdir)
-#                 return ok, log
-#             else:
-#                 # default to ligand preparation
-#                 ok, log = prepare_ligand_for_pdbqt(in_path, out_path, workdir=workdir)
-#                 return ok, log
-#         except Exception as e:
-#             return False, f"PDBQT prep exception: {e}"
+    # 1) Generate 3D + separate salts
+    cmd3d = ["obabel", src, "-O", tmp_3d, "--gen3d", "--separate", "-h"]
+    rc, out, err = run_cmd(cmd3d)
+    logs.append(" ".join(cmd3d))
+    logs.append(out or ""); logs.append(err or "")
 
-#     # Otherwise, use obabel as before
-#     in_fmt = Path(in_path).suffix.lstrip(".").lower()
-#     cmd = [
-#         "obabel",
-#         f"-i{in_fmt}", in_path,
-#         f"-o{out_fmt}", "-O", out_path,
-#         "--unique",
-#         "-h"
-#     ]
-#     # keep previous ligand-specific extras for non-pdbqt conversions when needed
-#     if out_fmt == "pdbqt":
-#         cmd += ["--partialcharge", "gasteiger", "--gen3d", "--ph=7.4"]
+    # prefer AutoDockTools prepare_ligand4.py
+    if which_exists("prepare_ligand4.py"):
+        cmd_adt = ["prepare_ligand4.py", "-l", tmp_3d, "-o", dst, "-A", "hydrogens"]
+        rc2, out2, err2 = run_cmd(cmd_adt)
+        logs.append(" ".join(cmd_adt))
+        logs.append(out2 or ""); logs.append(err2 or "")
+        if rc2 == 0 and os.path.exists(dst):
+            return True, "\n".join(logs)
+        else:
+            logs.append(f"prepare_ligand4.py failed (rc={rc2})")
+    else:
+        logs.append("prepare_ligand4.py not found in PATH; falling back to obabel pdbqt conversion.")
 
-#     rc, out, err = run_cmd(cmd)
-#     log = (out or "") + "\n" + (err or "")
-#     if rc != 0 or not os.path.exists(out_path):
-#         return False, log
-#     return True, log
+    # Fallback: obabel 3D -> pdbqt with charges
+    cmd_fallback = ["obabel", tmp_3d, "-O", dst, "--partialcharge", "gasteiger", "-h", "--gen3d"]
+    rc3, out3, err3 = run_cmd(cmd_fallback)
+    logs.append(" ".join(cmd_fallback))
+    logs.append(out3 or ""); logs.append(err3 or "")
+    if rc3 == 0 and os.path.exists(dst):
+        return True, "\n".join(logs)
+    return False, "\n".join(logs)
 
 
-# # ---------- UPDATE /convert endpoint to accept 'type' ----------
-# @router.post("/convert")
-# async def api_convert(
-#     file: UploadFile = File(...),
-#     outputFormat: str = Form(...),
-#     outputFolder: str = Form(...),
-#     type: str = Form("ligand")   # <-- new optional form param sent by frontend
-# ):
-#     outputFormat = outputFormat.lower().strip()
-#     type = (type or "ligand").lower().strip()
+# ---------- ENHANCED convert_any THAT ACCEPTS 'type' ----------
+# ---------- ENHANCED convert_any with scientific options ----------
+def convert_any(
+    in_path: str, 
+    out_path: str, 
+    role: Optional[str] = None,
+    # Scientific options
+    add_hydrogens: bool = True,
+    hydrogen_type: str = "polar",
+    merge_non_polar: bool = True,
+    detect_aromatic: bool = True,
+    assign_charges: bool = True,
+    charge_method: str = "gasteiger",
+    merge_lone_pairs: bool = True,
+    compute_torsdof: bool = True,
+    remove_waters: bool = True,
+    remove_non_protein: bool = True,
+    ph_value: Optional[str] = None 
+) -> Tuple[bool, str]:
+    """
+    Convert molecular file with scientific options.
+    role: 'receptor' or 'ligand' or None.
+    """
+    out_fmt = Path(out_path).suffix.lstrip(".").lower()
 
-#     allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
-#     if outputFormat not in allowed:
-#         raise HTTPException(400, f"Invalid output format: {outputFormat}")
+    # If target is pdbqt, run the prep pipeline with options
+    if out_fmt == "pdbqt":
+        try:
+            workdir = os.path.dirname(out_path) or tempfile.gettempdir()
+            
+            if role == "receptor":
+                # Build receptor-specific command
+                logs = []
+                tmp_clean = os.path.join(workdir, f"{Path(in_path).stem}_receptor.cleaned.pdb")
 
-#     os.makedirs(outputFolder, exist_ok=True)
-#     in_path = save_upload(file, outputFolder)
-#     base = Path(file.filename).stem
-#     out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
+                # Obabel cleaning step
+                cmd_obabel = ["obabel", in_path, "-O", tmp_clean]
+                if add_hydrogens:
+                    cmd_obabel.append("-h")
+                if remove_waters:
+                    cmd_obabel.extend(["--delete", "HOH"])
+                if remove_non_protein:
+                    cmd_obabel.append("--protein")
+                
+                rc, out, err = run_cmd(cmd_obabel)
+                logs.append(" ".join(cmd_obabel))
+                logs.append(out or "")
+                logs.append(err or "")
 
-#     ok, log = convert_any(in_path, out_path, role=type)
-#     if not ok:
-#         raise HTTPException(500, f"Conversion failed:\n{log}")
+                if rc != 0 or not os.path.exists(tmp_clean):
+                    tmp_clean = os.path.join(workdir, f"{Path(in_path).stem}_receptor.fallback.pdb")
+                    shutil.copyfile(in_path, tmp_clean)
+                    logs.append(f"obabel cleaning failed; using original copy.")
 
-#     return {"status": "ok", "input": in_path, "output": out_path, "log": log}
+                # Use AutoDockTools prepare_receptor4.py
+                if which_exists("prepare_receptor4.py"):
+                    cmd_adt = ["prepare_receptor4.py", "-r", tmp_clean, "-o", out_path]
+                    if add_hydrogens:
+                        cmd_adt.extend(["-A", "hydrogens"])
+                    if remove_waters:
+                        cmd_adt.append("-e")
+                    if merge_non_polar:
+                        cmd_adt.extend(["-U", "nphs"])
+                    if merge_lone_pairs:
+                        cmd_adt.extend(["-U", "lps"])
+                    
+                    rc2, out2, err2 = run_cmd(cmd_adt)
+                    logs.append(" ".join(cmd_adt))
+                    logs.append(out2 or "")
+                    logs.append(err2 or "")
+                    
+                    if rc2 == 0 and os.path.exists(out_path):
+                        return True, "\n".join(logs)
+                    else:
+                        logs.append(f"prepare_receptor4.py failed (rc={rc2})")
+                else:
+                    logs.append("prepare_receptor4.py not found; using obabel fallback.")
 
-# # ---------------------------------------------------------
-# # FILE PREVIEW ENDPOINT
-# # ---------------------------------------------------------
-# @router.get("/file-text")
-# def read_text_file(path: str):
-#     with open(path, "r") as f:
-#         return f.read()
+                # Fallback: obabel -> pdbqt
+                cmd_obabel2 = ["obabel", tmp_clean, "-O", out_path]
+                if assign_charges:
+                    cmd_obabel2.extend(["--partialcharge", charge_method])
+                if add_hydrogens:
+                    cmd_obabel2.append("-h")
+                
+                rc3, out3, err3 = run_cmd(cmd_obabel2)
+                logs.append(" ".join(cmd_obabel2))
+                logs.append(out3 or "")
+                logs.append(err3 or "")
+                
+                if rc3 == 0 and os.path.exists(out_path):
+                    return True, "\n".join(logs)
+                return False, "\n".join(logs)
+            
+            else:
+                # Ligand preparation with options
+                logs = []
+                tmp_3d = os.path.join(workdir, f"{Path(in_path).stem}_ligand.3d.sdf")
 
+                # Generate 3D structure
+                cmd3d = ["obabel", in_path, "-O", tmp_3d, "--gen3d", "--separate"]
+                if add_hydrogens:
+                    cmd3d.append("-h")
+                
+                rc, out, err = run_cmd(cmd3d)
+                logs.append(" ".join(cmd3d))
+                logs.append(out or "")
+                logs.append(err or "")
 
-# # ---------------------------------------------------------
-# # FOLDER CONVERSION
-# # ---------------------------------------------------------
-# @router.post("/convert-folder")
-# async def api_convert_folder(
-#     outputFormat: str = Form(...),
-#     inputFolder: Optional[str] = Form(None),
-#     outputFolder: str = Form(...),
-#     type: str = Form("ligand"),  # Add this
-#     files: List[UploadFile] = File(None),
-# ):
-#     outputFormat = outputFormat.lower().strip()
-#     allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
+                # Use AutoDockTools prepare_ligand4.py
+                if which_exists("prepare_ligand4.py"):
+                    cmd_adt = ["prepare_ligand4.py", "-l", tmp_3d, "-o", out_path]
+                    
+                    if add_hydrogens:
+                        if hydrogen_type == "all":
+                            cmd_adt.extend(["-A", "hydrogens"])
+                        else:
+                            cmd_adt.extend(["-A", "bonds_hydrogens"])
+                    
+                    if assign_charges:
+                        cmd_adt.append("-C")  # Compute Gasteiger charges
+                    
+                    if merge_non_polar:
+                        cmd_adt.extend(["-U", "nphs"])
+                    
+                    if merge_lone_pairs:
+                        cmd_adt.extend(["-U", "lps"])
+                    
+                    if detect_aromatic:
+                        cmd_adt.extend(["-U", "nphs_lps"])
+                    
+                    rc2, out2, err2 = run_cmd(cmd_adt)
+                    logs.append(" ".join(cmd_adt))
+                    logs.append(out2 or "")
+                    logs.append(err2 or "")
+                    
+                    if rc2 == 0 and os.path.exists(out_path):
+                        return True, "\n".join(logs)
+                    else:
+                        logs.append(f"prepare_ligand4.py failed (rc={rc2})")
+                else:
+                    logs.append("prepare_ligand4.py not found; using obabel fallback.")
 
-#     if outputFormat not in allowed:
-#         raise HTTPException(400, f"Invalid output format: {outputFormat}")
+                # Fallback: obabel
+                cmd_fallback = ["obabel", tmp_3d, "-O", out_path, "--gen3d"]
+                if assign_charges:
+                    cmd_fallback.extend(["--partialcharge", charge_method])
+                if add_hydrogens:
+                    cmd_fallback.append("-h")
+                if ph_value:
+                    cmd_fallback.extend([f"--pH={ph_value}"])
+                
+                rc3, out3, err3 = run_cmd(cmd_fallback)
+                logs.append(" ".join(cmd_fallback))
+                logs.append(out3 or "")
+                logs.append(err3 or "")
+                
+                if rc3 == 0 and os.path.exists(out_path):
+                    return True, "\n".join(logs)
+                return False, "\n".join(logs)
+        
+        except Exception as e:
+            return False, f"PDBQT prep exception: {e}"
 
-#     os.makedirs(outputFolder, exist_ok=True)
-
-#     converted = []
-#     failed = []
-
-#     # Uploaded files case
-#     if files:
-#         temp = tempfile.mkdtemp()
-#         try:
-#             for uf in files:
-#                 src = save_upload(uf, temp)
-#                 base = Path(uf.filename).stem
-#                 out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
-
-#                 ok, log = convert_any(src, out_path, role=type)
-#                 if ok:
-#                     converted.append(out_path)
-#                 else:
-#                     failed.append({"file": uf.filename, "error": log})
-#         finally:
-#             shutil.rmtree(temp, ignore_errors=True)
-
-#     # Folder conversion case
-#     else:
-#         if not inputFolder or not os.path.isdir(inputFolder):
-#             raise HTTPException(400, "Invalid or missing inputFolder")
-
-#         for fname in os.listdir(inputFolder):
-#             src = os.path.join(inputFolder, fname)
-#             if not os.path.isfile(src):
-#                 continue
-
-#             base = Path(fname).stem
-#             out_path = os.path.join(outputFolder, f"{base}.{outputFormat}")
-
-#             ok, log = convert_any(src, out_path)
-#             if ok:
-#                 converted.append(out_path)
-#             else:
-#                 failed.append({"file": fname, "error": log})
-
-#     return {
-#         "status": "ok",
-#         "converted": converted,
-#         "failed": failed
-#     }
-# @router.get("/file")
-# def serve_file(path: str):
-#     if not os.path.exists(path):
-#         raise HTTPException(404, "File not found")
+    # Otherwise, use obabel for other formats
+    in_fmt = Path(in_path).suffix.lstrip(".").lower()
+    cmd = [
+        "obabel",
+        f"-i{in_fmt}", in_path,
+        f"-o{out_fmt}", "-O", out_path,
+        "--unique",
+    ]
     
-#     return FileResponse(
-#         path,
-#         filename=os.path.basename(path),
-#         media_type="application/octet-stream"
-#     )
+    if add_hydrogens:
+        cmd.append("-h")
+    
+    if assign_charges and out_fmt == "pdbqt":
+        cmd.extend(["--partialcharge", charge_method])
+    
+    rc, out, err = run_cmd(cmd)
+    log = (out or "") + "\n" + (err or "")
+    
+    if rc != 0 or not os.path.exists(out_path):
+        return False, log
+    return True, log
+
+# ---------- UPDATE /convert endpoint to accept 'type' ----------
+# ---------------------------------------------------------
+# SINGLE FILE CONVERSION - Auto Download with Scientific Options
+# ---------------------------------------------------------
+@router.post("/convert-single")
+async def api_convert_single(
+    file: UploadFile = File(...),
+    type: str = Form("ligand"),
+    outputFormat: str = Form(...),
+    # Scientific options
+    addHydrogens: bool = Form(True),
+    hydrogenType: str = Form("polar"),
+    mergeNonPolar: bool = Form(True),
+    detectAromatic: bool = Form(True),
+    assignCharges: bool = Form(True),
+    chargeMethod: str = Form("gasteiger"),
+    mergeLonePairs: bool = Form(True),
+    computeTorsdof: bool = Form(True),
+    removeWaters: bool = Form(True),
+    removeNonProtein: bool = Form(True),
+    phValue: Optional[str] = None, 
+):
+    """
+    Convert single file and return as direct download.
+    No output folder needed - file is returned directly.
+    """
+    outputFormat = outputFormat.lower().strip()
+    type = (type or "ligand").lower().strip()
+
+    allowed = ["pdb", "pdbqt", "mol2", "sdf", "cif"]
+    if outputFormat not in allowed:
+        raise HTTPException(400, f"Invalid output format: {outputFormat}")
+
+    # Create temp directory for processing
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        # Save uploaded file
+        input_path = os.path.join(temp_dir, file.filename)
+        with open(input_path, 'wb') as f:
+            content = await file.read()
+            f.write(content)
+        
+        # Output path
+        base_name = Path(file.filename).stem
+        output_path = os.path.join(temp_dir, f"{base_name}.{outputFormat}")
+        
+        # Convert with scientific options
+        ok, log = convert_any(
+            input_path, 
+            output_path, 
+            role=type,
+            add_hydrogens=addHydrogens,
+            hydrogen_type=hydrogenType,
+            merge_non_polar=mergeNonPolar,
+            detect_aromatic=detectAromatic,
+            assign_charges=assignCharges,
+            charge_method=chargeMethod,
+            merge_lone_pairs=mergeLonePairs,
+            compute_torsdof=computeTorsdof,
+            remove_waters=removeWaters,
+            remove_non_protein=removeNonProtein,
+            ph_value=phValue
+        )
+        
+        if not ok:
+            raise HTTPException(500, f"Conversion failed:\n{log}")
+        
+        # Return file as download
+        return FileResponse(
+            output_path,
+            media_type="application/octet-stream",
+            filename=f"{base_name}.{outputFormat}",
+            headers={
+                "Content-Disposition": f"attachment; filename={base_name}.{outputFormat}"
+            }
+        )
+    
+    except Exception as e:
+        # Clean up temp directory on error
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise HTTPException(500, f"Error: {str(e)}")
+
+# ---------------------------------------------------------
+# SCRIPT GENERATION - For Folder Conversion (PYTHON VERSION)
+# ---------------------------------------------------------
+from datetime import datetime
+from fastapi.responses import Response
+
+@router.get("/generate-script")
+def generate_conversion_script(
+    inputFolder: str,
+    outputFolder: str,
+    type: str = "ligand",
+    outputFormat: str = "pdbqt",
+    # Scientific options
+    addHydrogens: bool = True,
+    hydrogenType: str = "polar",
+    mergeNonPolar: bool = True,
+    detectAromatic: bool = True,
+    assignCharges: bool = True,
+    chargeMethod: str = "gasteiger",
+    mergeLonePairs: bool = True,
+    computeTorsdof: bool = True,
+    removeWaters: bool = True,
+    removeNonProtein: bool = True,
+    phValue: str = "7.4",
+):
+    """
+    Generate Python script for batch conversion on user's local machine.
+    User downloads and runs this script locally with: python vsconverter.py
+    """
+    
+    # Build command flags based on scientific options
+    if type.lower() == "ligand":
+        cmd_flags = []
+        
+        if addHydrogens:
+            if hydrogenType == "all":
+                cmd_flags.append("-A hydrogens")
+            else:
+                cmd_flags.append("-A bonds_hydrogens")
+        
+        if assignCharges:
+            cmd_flags.append("-C")
+        
+        if mergeNonPolar:
+            cmd_flags.append("-U nphs")
+        
+        if mergeLonePairs:
+            cmd_flags.append("-U lps")
+        
+        flags_str = " ".join(cmd_flags)
+        
+        script_content = f'''#!/usr/bin/env python3
+"""
+=======================================================
+VS Molecular Converter - LIGAND
+=======================================================
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Input Folder: {inputFolder}
+Output Folder: {outputFolder}
+Output Format: {outputFormat}
+Type: {type}
+
+Scientific Options Applied:
+  - Add Hydrogens: {addHydrogens} ({hydrogenType})
+  - Merge Non-Polar H: {mergeNonPolar}
+  - Detect Aromatic: {detectAromatic}
+  - Assign Charges: {assignCharges} ({chargeMethod})
+  - Merge Lone Pairs: {mergeLonePairs}
+  - Compute Torsdof: {computeTorsdof}
+  - pH Value: {phValue}
+=======================================================
+"""
+
+import os
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+# Configuration
+INPUT_FOLDER = r"{inputFolder}"
+OUTPUT_FOLDER = r"{outputFolder}"
+OUTPUT_FORMAT = "{outputFormat}"
+TYPE = "{type}"
+
+# Scientific options
+FLAGS = "{flags_str}"
+
+# Color codes for terminal
+class Colors:
+    RED = '\\033[0;31m'
+    GREEN = '\\033[0;32m'
+    YELLOW = '\\033[1;33m'
+    BLUE = '\\033[0;34m'
+    CYAN = '\\033[0;36m'
+    BOLD = '\\033[1m'
+    NC = '\\033[0m'  # No Color
+
+def print_header():
+    """Print script header"""
+    print("=" * 60)
+    print(f"{{Colors.CYAN}}{{Colors.BOLD}}🧬 VS Molecular Converter - Ligand Batch{{Colors.NC}}")
+    print("=" * 60)
+    print(f"{{Colors.BOLD}}Input Folder:{{Colors.NC}}  {{INPUT_FOLDER}}")
+    print(f"{{Colors.BOLD}}Output Folder:{{Colors.NC}} {{OUTPUT_FOLDER}}")
+    print(f"{{Colors.BOLD}}Output Format:{{Colors.NC}} {{OUTPUT_FORMAT}}")
+    print(f"{{Colors.BOLD}}Type:{{Colors.NC}}          {{TYPE}}")
+    print("=" * 60)
+    print()
+
+def check_dependencies():
+    """Check if required tools are installed"""
+    print(f"{{Colors.YELLOW}}Checking dependencies...{{Colors.NC}}")
+
+    tools = {{
+        "obabel": shutil.which("obabel"),
+        "prepare_ligand4.py": shutil.which("prepare_ligand4.py"),
+        "prepare_receptor4.py": shutil.which("prepare_receptor4.py"),
+    }}
+
+    if tools["obabel"]:
+        print(f"{{Colors.GREEN}}✅ obabel found{{Colors.NC}}")
+    else:
+        print(f"{{Colors.YELLOW}}⚠️  obabel not found{{Colors.NC}}")
+
+    if TYPE == "ligand":
+        if tools["prepare_ligand4.py"]:
+            print(f"{{Colors.GREEN}}✅ prepare_ligand4.py found{{Colors.NC}}")
+        else:
+            print(f"{{Colors.YELLOW}}⚠️  prepare_ligand4.py not found{{Colors.NC}}")
+
+    if TYPE == "receptor":
+        if tools["prepare_receptor4.py"]:
+            print(f"{{Colors.GREEN}}✅ prepare_receptor4.py found{{Colors.NC}}")
+        else:
+            print(f"{{Colors.YELLOW}}⚠️  prepare_receptor4.py not found{{Colors.NC}}")
+
+    if not any(tools.values()):
+        print(f"{{Colors.RED}}❌ No supported conversion tools found{{Colors.NC}}")
+        sys.exit(1)
+
+    print()
+    return tools
+
+
+def run_conversion(input_file, output_file, tools):
+    ext = Path(input_file).suffix.lower()
+
+    try:
+        # Prefer OpenBabel
+        if tools.get("obabel"):
+            if ext == ".pdbqt":
+                cmd = ["obabel", "-ipdbqt", input_file, "-O", output_file]
+            else:
+                cmd = ["obabel", input_file, "-O", output_file]
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            if result.returncode == 0:
+                return True
+
+        # Ligand → PDBQT fallback
+        if (
+            TYPE == "ligand"
+            and OUTPUT_FORMAT == "pdbqt"
+            and tools.get("prepare_ligand4.py")
+            and ext != ".pdbqt"
+        ):
+            cmd = ["prepare_ligand4.py", "-l", input_file, "-o", output_file]
+            if FLAGS:
+                cmd.extend(FLAGS.split())
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            return result.returncode == 0
+
+        print(f"{{Colors.RED}}❌ No valid conversion path for {{input_file}}{{Colors.NC}}")
+        return False
+
+    except Exception as e:
+        print(f"{{Colors.RED}}Error: {{e}}{{Colors.NC}}")
+        return False
+
+
+def main():
+    """Main conversion process"""
+    print_header()
+    TOOLS = check_dependencies()
+    
+    # Validate input folder
+    if not os.path.exists(INPUT_FOLDER):
+        print(f"{{Colors.RED}}❌ Error: Input folder does not exist: {{INPUT_FOLDER}}{{Colors.NC}}")
+        sys.exit(1)
+    
+    if not os.path.isdir(INPUT_FOLDER):
+        print(f"{{Colors.RED}}❌ Error: Input path is not a folder: {{INPUT_FOLDER}}{{Colors.NC}}")
+        sys.exit(1)
+    
+    # Create output folder
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    print(f"{{Colors.GREEN}}✅ Output folder ready: {{OUTPUT_FOLDER}}{{Colors.NC}}")
+    print()
+    
+    # Find all molecular files
+    extensions = ['.pdb', '.mol2', '.sdf', '.cif', '.pdbqt']
+    input_files = []
+    
+    for ext in extensions:
+        input_files.extend(Path(INPUT_FOLDER).glob(f"*{{ext}}"))
+    
+    if not input_files:
+        print(f"{{Colors.YELLOW}}⚠️  No molecular files found in: {{INPUT_FOLDER}}{{Colors.NC}}")
+        print(f"Looking for: {{', '.join(extensions)}}")
+        sys.exit(0)
+    
+    # Convert files
+    print(f"{{Colors.BOLD}}Found {{len(input_files)}} file(s) to convert{{Colors.NC}}")
+    print()
+    print("Starting conversion...")
+    print("-" * 60)
+    
+    success_count = 0
+    failed_count = 0
+    failed_files = []
+    
+    for i, input_file in enumerate(input_files, 1):
+        filename = input_file.name
+        base_name = input_file.stem
+        output_file = os.path.join(OUTPUT_FOLDER, f"{{base_name}}.{{OUTPUT_FORMAT}}")
+        
+        print(f"{{Colors.BLUE}}[{{i}}/{{len(input_files)}}]{{Colors.NC}} {{filename}}", end=" ... ")
+        
+        if run_conversion(str(input_file), output_file, TOOLS):
+            print(f"{{Colors.GREEN}}✅ Success{{Colors.NC}}")
+            success_count += 1
+        else:
+            print(f"{{Colors.RED}}❌ Failed{{Colors.NC}}")
+            failed_count += 1
+            failed_files.append(filename)
+    
+    # Print summary
+    print("-" * 60)
+    print()
+    print("=" * 60)
+    print(f"{{Colors.BOLD}}{{Colors.CYAN}}📊 Conversion Complete!{{Colors.NC}}")
+    print("=" * 60)
+    print(f"Total files processed: {{len(input_files)}}")
+    print(f"{{Colors.GREEN}}✅ Successful: {{success_count}}{{Colors.NC}}")
+    print(f"{{Colors.RED}}❌ Failed: {{failed_count}}{{Colors.NC}}")
+    print("=" * 60)
+    print(f"{{Colors.BOLD}}Output location:{{Colors.NC}} {{OUTPUT_FOLDER}}")
+    print("=" * 60)
+    
+    # Show failed files if any
+    if failed_files:
+        print()
+        print(f"{{Colors.RED}}Failed files:{{Colors.NC}}")
+        for f in failed_files:
+            print(f"  - {{f}}")
+    
+    print()
+    print(f"{{Colors.CYAN}}Done! {{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}}{{Colors.NC}}")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        print(f"{{Colors.YELLOW}}⚠️  Conversion interrupted by user{{Colors.NC}}")
+        sys.exit(1)
+    except Exception as e:
+        print()
+        print(f"{{Colors.RED}}❌ Error: {{e}}{{Colors.NC}}")
+        sys.exit(1)
+'''
+    
+    else:  # receptor
+        cmd_flags = []
+        
+        if addHydrogens:
+            cmd_flags.append("-A hydrogens")
+        
+        if removeWaters:
+            cmd_flags.append("-e")
+        
+        if mergeNonPolar:
+            cmd_flags.append("-U nphs")
+        
+        if mergeLonePairs:
+            cmd_flags.append("-U lps")
+        
+        flags_str = " ".join(cmd_flags)
+        
+        script_content = f'''#!/usr/bin/env python3
+"""
+=======================================================
+VS Molecular Converter - RECEPTOR
+=======================================================
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Input Folder: {inputFolder}
+Output Folder: {outputFolder}
+Output Format: {outputFormat}
+Type: {type}
+
+Scientific Options Applied:
+  - Add Hydrogens: {addHydrogens}
+  - Remove Waters: {removeWaters}
+  - Remove Non-Protein: {removeNonProtein}
+  - Merge Non-Polar H: {mergeNonPolar}
+  - Merge Lone Pairs: {mergeLonePairs}
+  - pH Value: {phValue}
+=======================================================
+"""
+
+import os
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+# Configuration
+INPUT_FOLDER = r"{inputFolder}"
+OUTPUT_FOLDER = r"{outputFolder}"
+OUTPUT_FORMAT = "{outputFormat}"
+TYPE = "{type}"
+
+# Scientific options
+FLAGS = "{flags_str}"
+
+# Color codes for terminal
+class Colors:
+    RED = '\\033[0;31m'
+    GREEN = '\\033[0;32m'
+    YELLOW = '\\033[1;33m'
+    BLUE = '\\033[0;34m'
+    CYAN = '\\033[0;36m'
+    BOLD = '\\033[1m'
+    NC = '\\033[0m'  # No Color
+
+def print_header():
+    """Print script header"""
+    print("=" * 60)
+    print(f"{{Colors.CYAN}}{{Colors.BOLD}} VS Molecular Converter - Receptor Batch{{Colors.NC}}")
+    print("=" * 60)
+    print(f"{{Colors.BOLD}}Input Folder:{{Colors.NC}}  {{INPUT_FOLDER}}")
+    print(f"{{Colors.BOLD}}Output Folder:{{Colors.NC}} {{OUTPUT_FOLDER}}")
+    print(f"{{Colors.BOLD}}Output Format:{{Colors.NC}} {{OUTPUT_FORMAT}}")
+    print(f"{{Colors.BOLD}}Type:{{Colors.NC}}          {{TYPE}}")
+    print("=" * 60)
+    print()
+
+def check_dependencies():
+    """Check if required tools are installed"""
+    print(f"{{Colors.YELLOW}}Checking dependencies...{{Colors.NC}}")
+
+    tools = {{
+        "obabel": shutil.which("obabel"),
+        "prepare_ligand4.py": shutil.which("prepare_ligand4.py"),
+        "prepare_receptor4.py": shutil.which("prepare_receptor4.py"),
+    }}
+
+    if tools["obabel"]:
+        print(f"{{Colors.GREEN}}☑️ obabel found{{Colors.NC}}")
+    else:
+        print(f"{{Colors.YELLOW}}⚠️  obabel not found{{Colors.NC}}")
+
+    if TYPE == "ligand":
+        if tools["prepare_ligand4.py"]:
+            print(f"{{Colors.GREEN}}☑️ prepare_ligand4.py found{{Colors.NC}}")
+        else:
+            print(f"{{Colors.YELLOW}}⚠️  prepare_ligand4.py not found{{Colors.NC}}")
+
+    if TYPE == "receptor":
+        if tools["prepare_receptor4.py"]:
+            print(f"{{Colors.GREEN}}☑️ prepare_receptor4.py found{{Colors.NC}}")
+        else:
+            print(f"{{Colors.YELLOW}}⚠️  prepare_receptor4.py not found{{Colors.NC}}")
+
+    if not any(tools.values()):
+        print(f"{{Colors.RED}}❌ No supported conversion tools found{{Colors.NC}}")
+        sys.exit(1)
+
+    print()
+    return tools
+
+
+def run_conversion(input_file, output_file, tools):
+    ext = Path(input_file).suffix.lower()
+
+    try:
+        # 1️⃣ Prefer OpenBabel
+        if tools.get("obabel"):
+            if ext == ".pdbqt":
+                cmd = ["obabel", "-ipdbqt", input_file, "-O", output_file]
+            else:
+                cmd = ["obabel", input_file, "-O", output_file]
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            if result.returncode == 0:
+                return True
+            else:
+                print(f"{{Colors.YELLOW}}⚠️  OpenBabel failed, trying fallback...{{Colors.NC}}")
+                if result.stderr:
+                    print(result.stderr.strip())
+
+        # 2️⃣ Ligand → PDBQT fallback
+        if (
+            TYPE == "ligand"
+            and OUTPUT_FORMAT == "pdbqt"
+            and tools.get("prepare_ligand4.py")
+            and ext != ".pdbqt"
+        ):
+            cmd = ["prepare_ligand4.py", "-l", input_file, "-o", output_file]
+            if FLAGS:
+                cmd.extend(FLAGS.split())
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            return result.returncode == 0
+
+        # 3️⃣ Receptor → PDBQT fallback
+        if (
+            TYPE == "receptor"
+            and OUTPUT_FORMAT == "pdbqt"
+            and tools.get("prepare_receptor4.py")
+            and ext != ".pdbqt"
+        ):
+            cmd = ["prepare_receptor4.py", "-r", input_file, "-o", output_file]
+            if FLAGS:
+                cmd.extend(FLAGS.split())
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            return result.returncode == 0
+
+        print(f"{{Colors.RED}}❌ No valid conversion path for {{input_file}}{{Colors.NC}}")
+        return False
+
+    except Exception as e:
+        print(f"{{Colors.RED}}Error: {{e}}{{Colors.NC}}")
+        return False
+
+
+def main():
+    """Main conversion process"""
+    print_header()
+    TOOLS = check_dependencies()
+    
+    # Validate input folder
+    if not os.path.exists(INPUT_FOLDER):
+        print(f"{{Colors.RED}}❌ Error: Input folder does not exist: {{INPUT_FOLDER}}{{Colors.NC}}")
+        sys.exit(1)
+    
+    if not os.path.isdir(INPUT_FOLDER):
+        print(f"{{Colors.RED}}❌ Error: Input path is not a folder: {{INPUT_FOLDER}}{{Colors.NC}}")
+        sys.exit(1)
+    
+    # Create output folder
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    print(f"{{Colors.GREEN}}☑️ Output folder ready: {{OUTPUT_FOLDER}}{{Colors.NC}}")
+    print()
+    
+    # Find all receptor files
+    extensions = ['.pdb', '.cif']
+    input_files = []
+    
+    for ext in extensions:
+        input_files.extend(Path(INPUT_FOLDER).glob(f"*{{ext}}"))
+    
+    if not input_files:
+        print(f"{{Colors.YELLOW}}⚠️  No receptor files found in: {{INPUT_FOLDER}}{{Colors.NC}}")
+        print(f"Looking for: {{', '.join(extensions)}}")
+        sys.exit(0)
+    
+    # Convert files
+    print(f"{{Colors.BOLD}}Found {{len(input_files)}} file(s) to convert{{Colors.NC}}")
+    print()
+    print("Starting conversion...")
+    print("-" * 60)
+    
+    success_count = 0
+    failed_count = 0
+    failed_files = []
+    
+    for i, input_file in enumerate(input_files, 1):
+        filename = input_file.name
+        base_name = input_file.stem
+        output_file = os.path.join(OUTPUT_FOLDER, f"{{base_name}}.{{OUTPUT_FORMAT}}")
+        
+        print(f"{{Colors.BLUE}}[{{i}}/{{len(input_files)}}]{{Colors.NC}} {{filename}}", end=" ... ")
+        
+        if run_conversion(str(input_file), output_file, TOOLS):
+
+            print(f"{{Colors.GREEN}}✅ Success{{Colors.NC}}")
+            success_count += 1
+        else:
+            print(f"{{Colors.RED}}❌ Failed{{Colors.NC}}")
+            failed_count += 1
+            failed_files.append(filename)
+    
+    # Print summary
+    print("-" * 60)
+    print()
+    print("=" * 60)
+    print(f"{{Colors.BOLD}}{{Colors.CYAN}}✅ Conversion Complete!{{Colors.NC}}")
+    print("=" * 60)
+    print(f"Total files processed: {{len(input_files)}}")
+    print(f"{{Colors.GREEN}}✅ Successful: {{success_count}}{{Colors.NC}}")
+    print(f"{{Colors.RED}}❌ Failed: {{failed_count}}{{Colors.NC}}")
+    print("=" * 60)
+    print(f"{{Colors.BOLD}}Output location:{{Colors.NC}} {{OUTPUT_FOLDER}}")
+    print("=" * 60)
+    
+    # Show failed files if any
+    if failed_files:
+        print()
+        print(f"{{Colors.RED}}Failed files:{{Colors.NC}}")
+        for f in failed_files:
+            print(f"  - {{f}}")
+    
+    print()
+    print(f"{{Colors.CYAN}}Done! {{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}}{{Colors.NC}}")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        print(f"{{Colors.YELLOW}}⚠️  Conversion interrupted by user{{Colors.NC}}")
+        sys.exit(1)
+    except Exception as e:
+        print()
+        print(f"{{Colors.RED}}❌ Error: {{e}}{{Colors.NC}}")
+        sys.exit(1)
+'''
+
+    # Return Python script as downloadable file
+    script_bytes = script_content.encode('utf-8')
+    timestamp = int(datetime.now().timestamp())
+    
+    return Response(
+        content=script_bytes,
+        media_type="text/x-python",
+        headers={
+            "Content-Disposition": f"attachment; filename=vsconverter_{type}_{timestamp}.py"
+        }
+    )
+
+# ---------------------------------------------------------
+# FILE PREVIEW ENDPOINT
+# ---------------------------------------------------------
+@router.get("/file-text")
+def read_text_file(path: str):
+    with open(path, "r") as f:
+        return f.read()
+
+@router.get("/file")
+def serve_file(path: str):
+    if not os.path.exists(path):
+        raise HTTPException(404, "File not found")
+    
+    return FileResponse(
+        path,
+        filename=os.path.basename(path),
+        media_type="application/octet-stream"
+    )
 #---------------------------------------
 # ML SCORING TEMPLATE
 # ---------------------------------------------------------
