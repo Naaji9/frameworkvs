@@ -117,7 +117,7 @@ KEEP_HETERO = {str(keep_hetero)}
 def check_dependencies():
     """Verify required dependencies are installed"""
     print("\\n" + "="*80)
-    print("🔍 CHECKING DEPENDENCIES")
+    print(" CHECKING DEPENDENCIES")
     print("="*80)
     
     missing = []
@@ -130,12 +130,12 @@ def check_dependencies():
             # Extract version from help text
             version_line = [line for line in result.stdout.split('\\n') if 'Version' in line]
             version = version_line[0].strip() if version_line else "installed"
-            print(f"  ✅ PLIP found: {{version}}")
+            print(f"  ✔️  PLIP found: {{version}}")
         else:
             missing.append("PLIP")
     except (FileNotFoundError, subprocess.TimeoutExpired):
         missing.append("PLIP")
-        print("  ❌ PLIP not found")
+        print("  ✖️ PLIP not found")
     
     # Check Open Babel
     try:
@@ -143,22 +143,22 @@ def check_dependencies():
                               capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             version = result.stdout.strip().split('\\n')[0]
-            print(f"  ✅ Open Babel found: {{version}}")
+            print(f"  ✓ Open Babel found: {{version}}")
         else:
             missing.append("Open Babel")
     except (FileNotFoundError, subprocess.TimeoutExpired):
         missing.append("Open Babel")
-        print("  ❌ Open Babel not found")
+        print("  ✖️ Open Babel not found")
     
     if missing:
         print("\\n" + "="*80)
-        print("❌ MISSING DEPENDENCIES")
+        print("✖️ MISSING DEPENDENCIES")
         print("="*80)
         print("\\nThe following dependencies are required but not found:")
         for dep in missing:
             print(f"  • {{dep}}")
         
-        print("\\n📦 Installation Instructions:")
+        print("\\n Installation Instructions:")
         print("\\n1. Install PLIP:")
         print("   pip install plip")
         print("\\n2. Install Open Babel:")
@@ -170,7 +170,7 @@ def check_dependencies():
         sys.exit(1)
     
     print("="*80)
-    print("✅ All dependencies satisfied!\\n")
+    print("✔️ All dependencies satisfied!\\n")
 
 
 
@@ -363,6 +363,513 @@ def parse_plip_xml(xml_path, output_dir):
         print(f"    ⚠ Error parsing XML: {{e}}")
         return False
 
+def aggregate_plip_results_v2(job_dir):
+    """
+    Two-phase aggregation:
+    Phase 1: Create all_poses_interactions.csv for each combination
+    Phase 2: Read from all_poses_interactions.csv to generate summaries
+    """
+    
+    print("="*80)
+    print("PHASE 1: Creating all_poses_interactions.csv for each combination")
+    print("="*80)
+    
+    # Find all combination folders
+    combo_folders = []
+    for root, dirs, files in os.walk(job_dir):
+        if "original_files" in dirs and "poses" in dirs:
+            combo_folders.append(root)
+    
+    print(f"Found {{len(combo_folders)}} combination folders\\n")
+    
+    # Phase 1: Create all_poses_interactions.csv for each combination
+    for idx, combo_folder in enumerate(combo_folders, 1):
+        combo_name = os.path.basename(combo_folder)
+        print(f"[{{idx}}/{{len(combo_folders)}}] Processing: {{combo_name}}")
+        
+        # Find all pose folders
+        pose_folders = []
+        for item in os.listdir(combo_folder):
+            item_path = os.path.join(combo_folder, item)
+            if os.path.isdir(item_path) and item.startswith("pose_"):
+                pose_folders.append(item_path)
+        
+        # Collect all interactions from all poses
+        all_plip_interactions = []
+        
+        for pose_folder in sorted(pose_folders):
+            pose_num = int(os.path.basename(pose_folder).replace('pose_', ''))
+            interactions_csv = os.path.join(pose_folder, "interactions_all.csv")
+            
+            if os.path.exists(interactions_csv):
+                with open(interactions_csv, 'r', newline='', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        row_with_pose = {{'Pose': pose_num}}
+                        row_with_pose.update(row)
+                        all_plip_interactions.append(row_with_pose)
+        
+        # Write all_poses_interactions.csv
+        if all_plip_interactions:
+            all_poses_csv_path = os.path.join(combo_folder, 'all_poses_interactions.csv')
+            with open(all_poses_csv_path, 'w', newline='', encoding='utf-8') as f:
+                # Collect ALL unique fieldnames from all interactions
+                all_fields = set()
+                for interaction in all_plip_interactions:
+                    all_fields.update(interaction.keys())
+                all_fieldnames = ['Pose'] + sorted([f for f in all_fields if f != 'Pose'])
+                writer = csv.DictWriter(f, fieldnames=all_fieldnames)
+                writer.writeheader()
+                writer.writerows(all_plip_interactions)
+            
+            # Also create JSON version
+            all_poses_json_path = os.path.join(combo_folder, 'all_poses_interactions.json')
+            with open(all_poses_json_path, 'w', encoding='utf-8') as f:
+                json.dump(all_plip_interactions, f, indent=2)
+            
+            print(f"  Created all_poses_interactions.csv ({{len(all_plip_interactions)}} interactions)")
+        else:
+            print(f" ⚠️  No interactions found")
+    
+    print("\\n" + "="*80)
+    print(" PHASE 2: Generating summary files from all_poses_interactions.csv")
+    print("="*80 + "\\n")
+    
+    # Phase 2: Read from all_poses_interactions.csv and generate summaries
+    all_interactions = []
+    ligand_data = {{}}
+    residue_stats = {{}}
+    interaction_type_stats = {{}}
+    ligand_residue_matrix = {{}}
+    
+    print("Reading all_poses_interactions.csv files...")
+    
+    for combo_folder in combo_folders:
+        combo_name = os.path.basename(combo_folder)
+        all_poses_csv = os.path.join(combo_folder, 'all_poses_interactions.csv')
+        
+        if not os.path.exists(all_poses_csv):
+            continue
+        
+        # Extract ligand name from combo name
+        ligand_name = combo_name.split('_', 1)[-1] if '_' in combo_name else combo_name
+        
+        with open(all_poses_csv, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            
+            for row in reader:
+                pose_num = int(row.get('Pose', 1))
+                residue = f"{{row.get('restype', '')}}{{row.get('resnr', '')}}"
+                interaction_type_raw = row.get('interaction_type', 'Unknown')
+                
+                # Normalize interaction type
+                interaction_type = interaction_type_raw.replace('_', ' ').title()
+                
+                # Simplified type names
+                type_short = 'Other'
+                if 'Hydrogen' in interaction_type:
+                    type_short = 'H-bond'
+                elif 'Salt' in interaction_type:
+                    type_short = 'Salt-bridge'
+                elif 'Pi Stack' in interaction_type:
+                    type_short = 'Pi-stack'
+                elif 'Hydrophobic' in interaction_type:
+                    type_short = 'Hydrophobic'
+                elif 'Pi Cation' in interaction_type:
+                    type_short = 'Pi-cation'
+                elif 'Halogen' in interaction_type:
+                    type_short = 'Halogen'
+                elif 'Water' in interaction_type:
+                    type_short = 'Water-bridge'
+                elif 'Metal' in interaction_type:
+                    type_short = 'Metal'
+                
+                # Store interaction record
+                interaction_record = {{
+                    'ligand': ligand_name,
+                    'pose': pose_num,
+                    'residue': residue,
+                    'interaction_type': type_short,
+                    'distance': row.get('dist', row.get('dist_h-a', row.get('dist_d-a', ''))),
+                }}
+                all_interactions.append(interaction_record)
+                
+                # Update ligand_data
+                if ligand_name not in ligand_data:
+                    ligand_data[ligand_name] = {{}}
+                if pose_num not in ligand_data[ligand_name]:
+                    ligand_data[ligand_name][pose_num] = []
+                ligand_data[ligand_name][pose_num].append(interaction_record)
+                
+                # Update residue stats
+                if residue not in residue_stats:
+                    residue_stats[residue] = {{}}
+                residue_stats[residue][type_short] = residue_stats[residue].get(type_short, 0) + 1
+                
+                # Update interaction type stats
+                if type_short not in interaction_type_stats:
+                    interaction_type_stats[type_short] = {{
+                        'total_count': 0,
+                        'ligands': set(),
+                        'residues': {{}}
+                    }}
+                interaction_type_stats[type_short]['total_count'] += 1
+                interaction_type_stats[type_short]['ligands'].add(ligand_name)
+                interaction_type_stats[type_short]['residues'][residue] = \
+                    interaction_type_stats[type_short]['residues'].get(residue, 0) + 1
+                
+                # Update ligand-residue matrix
+                if ligand_name not in ligand_residue_matrix:
+                    ligand_residue_matrix[ligand_name] = {{}}
+                if residue not in ligand_residue_matrix[ligand_name]:
+                    ligand_residue_matrix[ligand_name][residue] = {{}}
+                ligand_residue_matrix[ligand_name][residue][type_short] = \
+                    ligand_residue_matrix[ligand_name][residue].get(type_short, 0) + 1
+    
+    if not all_interactions:
+        print("  ⚠️  No interaction data found!")
+        return
+    
+    print(f" Collected {{len(all_interactions)}} interactions from {{len(ligand_data)}} ligands\\n")
+    
+    # Generate all summary files (same as before)
+    print(" Generating summary files...")
+    
+    # FILE 1: residue_summary.csv
+    print("  Creating residue_summary.csv...")
+    residue_summary = []
+    for residue, type_counts in residue_stats.items():
+        total_interactions = sum(type_counts.values())
+        ligands_with_residue = set()
+        for ligand, residues in ligand_residue_matrix.items():
+            if residue in residues:
+                ligands_with_residue.add(ligand)
+        
+        ligand_count = len(ligands_with_residue)
+        ligand_coverage = (ligand_count / len(ligand_data)) * 100 if ligand_data else 0
+        
+        residue_summary.append({{
+            'Residue': residue,
+            'Total_Interactions': total_interactions,
+            'Ligand_Count': ligand_count,
+            'Ligand_Coverage_%': round(ligand_coverage, 1),
+            'H-bond': type_counts.get('H-bond', 0),
+            'Salt-bridge': type_counts.get('Salt-bridge', 0),
+            'Pi-stack': type_counts.get('Pi-stack', 0),
+            'Hydrophobic': type_counts.get('Hydrophobic', 0),
+            'Pi-cation': type_counts.get('Pi-cation', 0),
+            'Halogen': type_counts.get('Halogen', 0),
+            'Water-bridge': type_counts.get('Water-bridge', 0),
+            'Metal': type_counts.get('Metal', 0),
+        }})
+    
+    residue_summary.sort(key=lambda x: x['Total_Interactions'], reverse=True)
+    
+    summary_path = os.path.join(job_dir, 'residue_summary.csv')
+    with open(summary_path, 'w', newline='', encoding='utf-8') as f:
+        fieldnames = ['Residue', 'Total_Interactions', 'Ligand_Count', 'Ligand_Coverage_%',
+                     'H-bond', 'Salt-bridge', 'Pi-stack', 'Hydrophobic', 
+                     'Pi-cation', 'Halogen', 'Water-bridge', 'Metal']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(residue_summary)
+    print(f"  residue_summary.csv ({{len(residue_summary)}} residues)")
+    
+    # FILE 2: ligand_interaction_matrix_top100.csv
+    print("  Creating ligand_interaction_matrix_top100.csv...")
+    all_residues = [r['Residue'] for r in residue_summary[:50]]
+    
+    ligand_summary = []
+    for ligand, residue_data in ligand_residue_matrix.items():
+        total_interactions = sum(sum(types.values()) for types in residue_data.values())
+        unique_residues = len(residue_data)
+        
+        row = {{
+            'Ligand': ligand,
+            'Total_Interactions': total_interactions,
+            'Unique_Residues': unique_residues,
+        }}
+        
+        for residue in all_residues:
+            if residue in residue_data:
+                row[residue] = sum(residue_data[residue].values())
+            else:
+                row[residue] = 0
+        
+        ligand_summary.append(row)
+    
+    ligand_summary.sort(key=lambda x: x['Total_Interactions'], reverse=True)
+    top100_ligands = ligand_summary[:100]
+    
+    top100_path = os.path.join(job_dir, 'ligand_interaction_matrix_top100.csv')
+    with open(top100_path, 'w', newline='', encoding='utf-8') as f:
+        fieldnames = ['Ligand', 'Total_Interactions', 'Unique_Residues'] + all_residues
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(top100_ligands)
+    print(f"  ligand_interaction_matrix_top100.csv ({{len(top100_ligands)}} ligands)")
+    
+    # FILE 3: ligand_summary_with_top_residues.csv
+    print("  Creating ligand_summary_with_top_residues.csv...")
+    ligand_summary_detailed = []
+    for ligand, residue_data in ligand_residue_matrix.items():
+        total_interactions = sum(sum(types.values()) for types in residue_data.values())
+        unique_residues = len(residue_data)
+        
+        h_bond_total = sum(types.get('H-bond', 0) for types in residue_data.values())
+        salt_total = sum(types.get('Salt-bridge', 0) for types in residue_data.values())
+        pi_stack_total = sum(types.get('Pi-stack', 0) for types in residue_data.values())
+        hydrophobic_total = sum(types.get('Hydrophobic', 0) for types in residue_data.values())
+        pi_cation_total = sum(types.get('Pi-cation', 0) for types in residue_data.values())
+        halogen_total = sum(types.get('Halogen', 0) for types in residue_data.values())
+        water_total = sum(types.get('Water-bridge', 0) for types in residue_data.values())
+        metal_total = sum(types.get('Metal', 0) for types in residue_data.values())
+        
+        residue_totals = [(res, sum(types.values())) for res, types in residue_data.items()]
+        residue_totals.sort(key=lambda x: x[1], reverse=True)
+        
+        top_res_1 = residue_totals[0] if len(residue_totals) > 0 else ('', 0)
+        top_res_2 = residue_totals[1] if len(residue_totals) > 1 else ('', 0)
+        top_res_3 = residue_totals[2] if len(residue_totals) > 2 else ('', 0)
+        
+        ligand_summary_detailed.append({{
+            'Ligand': ligand,
+            'Total_Interactions': total_interactions,
+            'Unique_Residues': unique_residues,
+            'Top_Residue_1': top_res_1[0],
+            'Top_Res_1_Count': top_res_1[1],
+            'Top_Residue_2': top_res_2[0],
+            'Top_Res_2_Count': top_res_2[1],
+            'Top_Residue_3': top_res_3[0],
+            'Top_Res_3_Count': top_res_3[1],
+            'H-bond_Total': h_bond_total,
+            'Salt-bridge_Total': salt_total,
+            'Pi-stack_Total': pi_stack_total,
+            'Hydrophobic_Total': hydrophobic_total,
+            'Pi-cation_Total': pi_cation_total,
+            'Halogen_Total': halogen_total,
+            'Water-bridge_Total': water_total,
+            'Metal_Total': metal_total,
+        }})
+    
+    ligand_summary_detailed.sort(key=lambda x: x['Total_Interactions'], reverse=True)
+    
+    ligand_summary_path = os.path.join(job_dir, 'ligand_summary_with_top_residues.csv')
+    with open(ligand_summary_path, 'w', newline='', encoding='utf-8') as f:
+        fieldnames = [
+            'Ligand', 'Total_Interactions', 'Unique_Residues',
+            'Top_Residue_1', 'Top_Res_1_Count',
+            'Top_Residue_2', 'Top_Res_2_Count',
+            'Top_Residue_3', 'Top_Res_3_Count',
+            'H-bond_Total', 'Salt-bridge_Total', 'Pi-stack_Total', 'Hydrophobic_Total',
+            'Pi-cation_Total', 'Halogen_Total', 'Water-bridge_Total', 'Metal_Total'
+        ]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(ligand_summary_detailed)
+    print(f" ligand_summary_with_top_residues.csv ({{len(ligand_summary_detailed)}} ligands)")
+    
+    # FILE 4: interaction_type_breakdown.csv
+    print("  Creating interaction_type_breakdown.csv...")
+    type_breakdown = []
+    for itype, stats in interaction_type_stats.items():
+        total_count = stats['total_count']
+        ligand_count = len(stats['ligands'])
+        avg_per_ligand = total_count / ligand_count if ligand_count > 0 else 0
+        
+        most_common_res = max(stats['residues'].items(), key=lambda x: x[1]) if stats['residues'] else ('N/A', 0)
+        
+        type_breakdown.append({{
+            'Interaction_Type': itype,
+            'Total_Count': total_count,
+            'Ligand_Count': ligand_count,
+            'Avg_Per_Ligand': round(avg_per_ligand, 1),
+            'Most_Common_Residue': most_common_res[0],
+            'Residue_Count': most_common_res[1]
+        }})
+    
+    type_breakdown.sort(key=lambda x: x['Total_Count'], reverse=True)
+    
+    breakdown_path = os.path.join(job_dir, 'interaction_type_breakdown.csv')
+    with open(breakdown_path, 'w', newline='', encoding='utf-8') as f:
+        fieldnames = ['Interaction_Type', 'Total_Count', 'Ligand_Count', 'Avg_Per_Ligand', 
+                     'Most_Common_Residue', 'Residue_Count']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(type_breakdown)
+    print(f"  interaction_type_breakdown.csv ({{len(type_breakdown)}} types)")
+    
+    # FILE 5: best_residue_per_ligand.csv
+    print("  Creating best_residue_per_ligand.csv...")
+    best_residue_data = []
+    for ligand, residue_data in ligand_residue_matrix.items():
+        best_residue = None
+        best_total = 0
+        best_type_counts = {{}}
+        
+        for residue, type_counts in residue_data.items():
+            total = sum(type_counts.values())
+            if total > best_total:
+                best_total = total
+                best_residue = residue
+                best_type_counts = type_counts
+        
+        if best_residue:
+            best_residue_data.append({{
+                'Ligand': ligand,
+                'Best_Residue': best_residue,
+                'Total_Interactions': best_total,
+                'H-bond': best_type_counts.get('H-bond', 0),
+                'Salt-bridge': best_type_counts.get('Salt-bridge', 0),
+                'Pi-stack': best_type_counts.get('Pi-stack', 0),
+                'Hydrophobic': best_type_counts.get('Hydrophobic', 0),
+                'Pi-cation': best_type_counts.get('Pi-cation', 0),
+                'Halogen': best_type_counts.get('Halogen', 0),
+                'Water-bridge': best_type_counts.get('Water-bridge', 0),
+                'Metal': best_type_counts.get('Metal', 0),
+            }})
+    
+    best_residue_data.sort(key=lambda x: x['Total_Interactions'], reverse=True)
+    
+    best_residue_path = os.path.join(job_dir, 'best_residue_per_ligand.csv')
+    with open(best_residue_path, 'w', newline='', encoding='utf-8') as f:
+        fieldnames = ['Ligand', 'Best_Residue', 'Total_Interactions', 'H-bond', 'Salt-bridge', 
+                     'Pi-stack', 'Hydrophobic', 'Pi-cation', 'Halogen', 'Water-bridge', 'Metal']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(best_residue_data)
+    print(f"  best_residue_per_ligand.csv ({{len(best_residue_data)}} ligands)")
+    
+    # FILE 6: Generate poses_summary.csv and poses_interaction_matrix.csv in each combo folder
+    print("\\n  Creating per-combination pose files...")
+    for combo_folder in combo_folders:
+        combo_name = os.path.basename(combo_folder)
+        all_poses_csv = os.path.join(combo_folder, 'all_poses_interactions.csv')
+        
+        if not os.path.exists(all_poses_csv):
+            continue
+        
+        # Extract ligand name
+        ligand_name = combo_name.split('_', 1)[-1] if '_' in combo_name else combo_name
+        
+        if ligand_name not in ligand_data:
+            continue
+        
+        poses_data = ligand_data[ligand_name]
+        pose_matrix = []
+        pose_summary_data = []
+        
+        for pose_num in sorted(poses_data.keys()):
+            interactions = poses_data[pose_num]
+            
+            residue_interactions = {{}}
+            for interaction in interactions:
+                res = interaction['residue']
+                itype = interaction['interaction_type']
+                
+                if res not in residue_interactions:
+                    residue_interactions[res] = {{
+                        'H-bond': 0, 'Salt-bridge': 0, 'Pi-stack': 0, 'Hydrophobic': 0,
+                        'Pi-cation': 0, 'Halogen': 0, 'Water-bridge': 0, 'Metal': 0
+                    }}
+                
+                residue_interactions[res][itype] += 1
+            
+            pose_total_interactions = sum(sum(types.values()) for types in residue_interactions.values())
+            pose_unique_residues = len(residue_interactions)
+            
+            pose_h_bond = sum(types['H-bond'] for types in residue_interactions.values())
+            pose_salt = sum(types['Salt-bridge'] for types in residue_interactions.values())
+            pose_pi_stack = sum(types['Pi-stack'] for types in residue_interactions.values())
+            pose_hydrophobic = sum(types['Hydrophobic'] for types in residue_interactions.values())
+            pose_pi_cation = sum(types['Pi-cation'] for types in residue_interactions.values())
+            pose_halogen = sum(types['Halogen'] for types in residue_interactions.values())
+            pose_water = sum(types['Water-bridge'] for types in residue_interactions.values())
+            pose_metal = sum(types['Metal'] for types in residue_interactions.values())
+            
+            best_residue = ''
+            best_res_count = 0
+            best_res_types = {{'H-bond': 0, 'Salt-bridge': 0, 'Pi-stack': 0, 'Hydrophobic': 0,
+                             'Pi-cation': 0, 'Halogen': 0, 'Water-bridge': 0, 'Metal': 0}}
+            
+            if residue_interactions:
+                best_residue = max(residue_interactions.items(), key=lambda x: sum(x[1].values()))[0]
+                best_res_count = sum(residue_interactions[best_residue].values())
+                best_res_types = residue_interactions[best_residue]
+            
+            pose_summary_data.append({{
+                'Pose': pose_num,
+                'Total_Interactions': pose_total_interactions,
+                'Unique_Residues': pose_unique_residues,
+                'Best_Residue': best_residue,
+                'Best_Res_Count': best_res_count,
+                'Best_Res_H-bond': best_res_types['H-bond'],
+                'Best_Res_Salt-bridge': best_res_types['Salt-bridge'],
+                'Best_Res_Pi-stack': best_res_types['Pi-stack'],
+                'Best_Res_Hydrophobic': best_res_types['Hydrophobic'],
+                'Best_Res_Pi-cation': best_res_types['Pi-cation'],
+                'Best_Res_Halogen': best_res_types['Halogen'],
+                'Best_Res_Water-bridge': best_res_types['Water-bridge'],
+                'Best_Res_Metal': best_res_types['Metal'],
+                'Total_H-bond': pose_h_bond,
+                'Total_Salt-bridge': pose_salt,
+                'Total_Pi-stack': pose_pi_stack,
+                'Total_Hydrophobic': pose_hydrophobic,
+                'Total_Pi-cation': pose_pi_cation,
+                'Total_Halogen': pose_halogen,
+                'Total_Water-bridge': pose_water,
+                'Total_Metal': pose_metal,
+            }})
+            
+            for residue, type_counts in residue_interactions.items():
+                total = sum(type_counts.values())
+                pose_matrix.append({{
+                    'Pose': pose_num,
+                    'Residue': residue,
+                    'Total_Interactions': total,
+                    'H-bond': type_counts['H-bond'],
+                    'Salt-bridge': type_counts['Salt-bridge'],
+                    'Pi-stack': type_counts['Pi-stack'],
+                    'Hydrophobic': type_counts['Hydrophobic'],
+                    'Pi-cation': type_counts['Pi-cation'],
+                    'Halogen': type_counts['Halogen'],
+                    'Water-bridge': type_counts['Water-bridge'],
+                    'Metal': type_counts['Metal'],
+                }})
+        
+        # Write poses_summary.csv
+        pose_summary_path = os.path.join(combo_folder, 'poses_summary.csv')
+        with open(pose_summary_path, 'w', newline='', encoding='utf-8') as f:
+            fieldnames = [
+                'Pose', 'Total_Interactions', 'Unique_Residues',
+                'Best_Residue', 'Best_Res_Count',
+                'Best_Res_H-bond', 'Best_Res_Salt-bridge', 'Best_Res_Pi-stack', 'Best_Res_Hydrophobic',
+                'Best_Res_Pi-cation', 'Best_Res_Halogen', 'Best_Res_Water-bridge', 'Best_Res_Metal',
+                'Total_H-bond', 'Total_Salt-bridge', 'Total_Pi-stack', 'Total_Hydrophobic',
+                'Total_Pi-cation', 'Total_Halogen', 'Total_Water-bridge', 'Total_Metal'
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(pose_summary_data)
+        
+        # Write poses_interaction_matrix.csv
+        pose_csv_path = os.path.join(combo_folder, 'poses_interaction_matrix.csv')
+        with open(pose_csv_path, 'w', newline='', encoding='utf-8') as f:
+            fieldnames = ['Pose', 'Residue', 'Total_Interactions', 'H-bond', 'Salt-bridge', 
+                         'Pi-stack', 'Hydrophobic', 'Pi-cation', 'Halogen', 'Water-bridge', 'Metal']
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(pose_matrix)
+    
+    print(f"  Created pose files in {{len(combo_folders)}} combination folders")
+    
+    print("\\n" + "="*80)
+    print(" AGGREGATION COMPLETE!")
+    print("="*80)
+    print(f"  Generated 5 global summary files")
+    print(f"  Generated pose files in {{len(combo_folders)}} combination folders")
+    print(f"  🗁 Location: {{job_dir}}")
+    print("="*80)
 
 # ============================================================================
 # MATCHING LOGIC
@@ -400,7 +907,7 @@ def separate_receptors_and_ligands(all_files):
     ligands = []
     
     print(f"\\n{{'='*80}}")
-    print(f"🔍 INTELLIGENT FILE SEPARATION")
+    print(f" INTELLIGENT FILE SEPARATION")
     print(f"{{'='*80}}")
     
     for file_path in all_files:
@@ -425,10 +932,10 @@ def separate_receptors_and_ligands(all_files):
         
         if is_ligand:
             ligands.append(file_path)
-            print(f"  📊 LIGAND: {{filename}}")
+            print(f"   LIGAND: {{filename}}")
         else:
             receptors.append(file_path)
-            print(f"  🧬 RECEPTOR: {{filename}}")
+            print(f"   RECEPTOR: {{filename}}")
     
     print(f"{{'='*80}}")
     print(f"  Total Receptors: {{len(receptors)}}")
@@ -444,7 +951,7 @@ def match_receptors_to_ligands(receptor_files, ligand_files):
     skipped_receptors = []
     
     print(f"{{'='*80}}")
-    print(f"🔗 MATCHING PROCESS STARTED (Flexible Prefix Matching)")
+    print(f" MATCHING PROCESS STARTED (Flexible Prefix Matching)")
     print(f"{{'='*80}}")
     print(f"  Total receptors to process: {{len(receptor_files)}}")
     print(f"  Total ligands available: {{len(ligand_files)}}")
@@ -494,7 +1001,7 @@ def match_receptors_to_ligands(receptor_files, ligand_files):
                     "matched_identifier": receptor_base
                 }})
                 matches_found += 1
-                print(f"    ✅ Match #{{matches_found}}: {{ligand_name}}")
+                print(f"     Match #{{matches_found}}: {{ligand_name}}")
                 print(f"       Matched via: {{match_type}}")
         
         print(f"\\n  {{'─'*76}}")
@@ -503,11 +1010,11 @@ def match_receptors_to_ligands(receptor_files, ligand_files):
             print(f"  This receptor will be SKIPPED")
             skipped_receptors.append(receptor_name)
         else:
-            print(f"  ✅ Total matches for {{receptor_name}}: {{matches_found}}")
+            print(f"   Total matches for {{receptor_name}}: {{matches_found}}")
         print(f"  {{'─'*76}}\\n")
     
     print(f"{{'='*80}}")
-    print(f"✅ MATCHING PROCESS COMPLETE")
+    print(f" MATCHING PROCESS COMPLETE")
     print(f"{{'='*80}}")
     print(f"  Total combinations created: {{len(combinations)}}")
     print(f"  Receptors successfully matched: {{len(receptor_files) - len(skipped_receptors)}}")
@@ -528,7 +1035,7 @@ def get_all_pdbqt_files(path):
     # Handle single file
     if os.path.isfile(path):
         if path.endswith(('.pdb', '.pdbqt')):
-            print(f"  📄 Single file detected: {{os.path.basename(path)}}")
+            print(f"   Single file detected: {{os.path.basename(path)}}")
             return [path]
         else:
             print(f"  ⚠️  WARNING: {{path}} is not a PDB/PDBQT file")
@@ -538,7 +1045,7 @@ def get_all_pdbqt_files(path):
     if os.path.isdir(path):
         files = []
         try:
-            print(f"  📁 Searching recursively in: {{path}}")
+            print(f"  🗁 Searching recursively in: {{path}}")
             for root, dirs, filenames in os.walk(path):
                 for fname in filenames:
                     if fname.endswith(('.pdb', '.pdbqt')):
@@ -550,12 +1057,12 @@ def get_all_pdbqt_files(path):
                             print(f"     Found in: {{rel_path}}/{{fname}}")
             
             if files:
-                print(f"  ✅ Total found: {{len(files)}} PDB/PDBQT file(s) across all subdirectories")
+                print(f"  Total found: {{len(files)}} PDB/PDBQT file(s) across all subdirectories")
             else:
                 print(f"  ⚠️  No PDB/PDBQT files found in {{path}} or its subdirectories")
             return sorted(files)
         except Exception as e:
-            print(f"  ❌ ERROR reading directory {{path}}: {{e}}")
+            print(f"  ✖️ ERROR reading directory {{path}}: {{e}}")
             return []
     
     # Path doesn't exist - try parent directory
@@ -563,7 +1070,7 @@ def get_all_pdbqt_files(path):
     parent = os.path.dirname(path)
     
     if parent and os.path.isdir(parent):
-        print(f"  🔍 Searching recursively in parent directory: {{parent}}")
+        print(f"   Searching recursively in parent directory: {{parent}}")
         files = []
         for root, dirs, filenames in os.walk(parent):
             for fname in filenames:
@@ -571,12 +1078,12 @@ def get_all_pdbqt_files(path):
                     full_path = os.path.join(root, fname)
                     files.append(full_path)
         if files:
-            print(f"  ✅ Found {{len(files)}} PDB/PDBQT file(s) in parent directory tree!")
+            print(f"   Found {{len(files)}} PDB/PDBQT file(s) in parent directory tree!")
             return sorted(files)
         else:
-            print(f"  ❌ No PDB/PDBQT files found in parent directory tree")
+            print(f"  ✖️ No PDB/PDBQT files found in parent directory tree")
     
-    print(f"  ❌ ERROR: Could not find any valid files")
+    print(f"  ✖️ ERROR: Could not find any valid files")
     return []
 
 # ============================================================================
@@ -618,7 +1125,7 @@ def execute_single_combination(combo, max_poses):
     # Process each pose
     pose_results = []
     for i, pose_file in enumerate(selected_poses, start=1):
-        print(f"\\n    🎯 Processing pose {{i}}/{{len(selected_poses)}}...")
+        print(f"\\n    Processing pose {{i}}/{{len(selected_poses)}}...")
         pose_dir = os.path.join(combo_output_dir, f"pose_{{i}}")
         os.makedirs(pose_dir, exist_ok=True)
         
@@ -682,9 +1189,9 @@ def execute_single_combination(combo, max_poses):
 
 def main():
     print("\\n" + "="*80)
-    print("🧬 PLIP ANALYSIS - STANDALONE SCRIPT")
+    print(" PLIP ANALYSIS - STANDALONE SCRIPT")
     print("="*80)
-    print("Generated by: Combi VS FrameworkVS 3.0")
+    print("GENERATED BY: COMBI VS  FRAMEWORK 3.0")
     print("="*80)
     
     # Check dependencies first
@@ -692,27 +1199,27 @@ def main():
     
     # Validate paths
     print("\\n" + "="*80)
-    print("📂 VALIDATING PATHS")
+    print(" VALIDATING PATHS")
     print("="*80)
     
     if not os.path.exists(RECEPTOR_PATH):
-        print(f"❌ Receptor path does not exist: {{RECEPTOR_PATH}}")
+        print(f"✖️ Receptor path does not exist: {{RECEPTOR_PATH}}")
         sys.exit(1)
-    print(f"  ✅ Receptor: {{RECEPTOR_PATH}}")
+    print(f"  ✓ Receptor: {{RECEPTOR_PATH}}")
     
     if not os.path.exists(LIGAND_PATH):
-        print(f"❌ Ligand path does not exist: {{LIGAND_PATH}}")
+        print(f"✖️ Ligand path does not exist: {{LIGAND_PATH}}")
         sys.exit(1)
-    print(f"  ✅ Ligand: {{LIGAND_PATH}}")
+    print(f"  ✓ Ligand: {{LIGAND_PATH}}")
     
     # Create output folder
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-    print(f"  ✅ Output: {{OUTPUT_FOLDER}}")
+    print(f"  ✓ Output: {{OUTPUT_FOLDER}}")
     print("="*80)
     
     # Display configuration
     print("\\n" + "="*80)
-    print("⚙️  CONFIGURATION")
+    print("  CONFIGURATION")
     print("="*80)
     print(f"  Max poses per combination: {{MAX_POSES}}")
     print(f"  Parallel workers: {{MAX_WORKERS}}")
@@ -723,9 +1230,9 @@ def main():
     print("="*80)
     
     # Get receptor and ligand files
-# Get all PDB/PDBQT files recursively
+    # Get all PDB/PDBQT files recursively
     print("\\n" + "="*80)
-    print("📁 SCANNING FILES RECURSIVELY")
+    print(" SCANNING FILES RECURSIVELY")
     print("="*80)
     
     # Combine both paths for searching
@@ -750,7 +1257,7 @@ def main():
     all_files = unique_files
     
     if not all_files:
-        print("❌ No PDB/PDBQT files found")
+        print("✖️ No PDB/PDBQT files found")
         sys.exit(1)
     
     # Intelligently separate receptors from ligands
@@ -767,17 +1274,17 @@ def main():
     print("="*80)
     
     if not receptor_files:
-        print("❌ No receptor files found")
+        print("✖️ No receptor files found")
         sys.exit(1)
     if not ligand_files:
-        print("❌ No ligand files found")
+        print("✖️ No ligand files found")
         sys.exit(1)
     
     # Match receptors with ligands
     matched_combinations = match_receptors_to_ligands(receptor_files, ligand_files)
     
     if not matched_combinations:
-        print("❌ No matching receptor-ligand pairs found!")
+        print("✖️ No matching receptor-ligand pairs found!")
         print("   Ensure ligands are named like: {{receptor_prefix}}_{{compound}}_{{score}}.pdbqt")
         sys.exit(1)
     
@@ -786,7 +1293,7 @@ def main():
     job_dir = os.path.join(OUTPUT_FOLDER, f"plip_job_{{job_id}}")
     os.makedirs(job_dir, exist_ok=True)
     
-    print(f"\\n📁 Job directory created: {{job_dir}}")
+    print(f"\\n Job directory created: {{job_dir}}")
     
     # Save matching summary
     summary_path = os.path.join(job_dir, "combinations_summary.json")
@@ -831,7 +1338,7 @@ def main():
             try:
                 result = future.result()
                 results.append(result)
-                print(f"[{{i}}/{{len(matched_combinations)}}] ✅ {{combo['combo_name']}}")
+                print(f"[{{i}}/{{len(matched_combinations)}}] ✔ {{combo['combo_name']}}")
             except Exception as e:
                 error_info = {{
                     "combo_name": combo['combo_name'],
@@ -840,20 +1347,23 @@ def main():
                     "error": str(e)
                 }}
                 failed.append(error_info)
-                print(f"[{{i}}/{{len(matched_combinations)}}] ❌ {{combo['combo_name']}} - {{e}}")
+                print(f"[{{i}}/{{len(matched_combinations)}}] × {{combo['combo_name']}} - {{e}}")
     
     elapsed_time = time.time() - start_time
+
+    print("\\n Aggregating PLIP results across dataset...")
     
+    aggregate_plip_results_v2(job_dir)
     # Final summary
     print(f"\\n{{'='*80}}")
-    print(f"🎉 JOB COMPLETE!")
+    print(f"JOB COMPLETE!")
     print(f"{{'='*80}}")
     print(f"  Job ID: {{job_id}}")
     print(f"  Job Directory: {{job_dir}}")
     print(f"  Total combinations: {{len(matched_combinations)}}")
-    print(f"  ✅ Successful: {{len(results)}}")
-    print(f"  ❌ Failed: {{len(failed)}}")
-    print(f"  ⏱️  Time: {{elapsed_time:.2f}}s")
+    print(f"  ✓ Successful: {{len(results)}}")
+    print(f"  × Failed: {{len(failed)}}")
+    print(f"  ⏱  Time: {{elapsed_time:.2f}}s")
     print(f"{'='*80}")
     
     if failed:
@@ -893,7 +1403,7 @@ def main():
     print(f"\\n Results saved to: {{final_results_path}}")
     
     # Print summary of output files
-    print(f"\\n📊 Output Summary:")
+    print(f"\\n Output Summary:")
     total_csv = sum(len(pose.get('csv_files', [])) for r in results for pose in r.get('poses', []))
     total_json = sum(len(pose.get('json_files', [])) for r in results for pose in r.get('poses', []))
     total_png = sum(len(pose.get('png_files', [])) for r in results for pose in r.get('poses', []))
@@ -902,9 +1412,9 @@ def main():
     print(f"  JSON files: {{total_json}}")
     print(f"  PNG files: {{total_png}}")
     
-    print(f"\\n✅ Analysis complete! Check the job directory for all results.")
+    print(f"\\n ✔ Analysis complete! Check the job directory for all results.")
     print(f"   {{job_dir}}\\n")
-    print("Generated by: Combi VS FrameworkVS 3.0")
+    print("GENERATED BY: COMBI VS  FRAMEWORK 3.0)
 
 
 if __name__ == "__main__":

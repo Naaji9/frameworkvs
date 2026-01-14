@@ -40,7 +40,7 @@ export default function PlipFormOnline() {
     const cores = navigator.hardwareConcurrency || 4;
     return Math.max(1, Math.min(16, Math.floor(cores / 2)));
   });
-  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:5005");
+  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:5008");
   const [detectedCores, setDetectedCores] = useState(() => navigator.hardwareConcurrency || 4);
 
   // ============================================================================
@@ -274,8 +274,8 @@ export default function PlipFormOnline() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      setStatus("✅ Script generated and downloaded successfully!");
-      alert("✅ Script downloaded! Run it on your local machine with: python plip_analysis_standalone.py");
+      setStatus(" Script generated and downloaded successfully!");
+      alert(" Script downloaded! Run it on your local machine with: python3 plip_analysis_standalone.py");
       
     } catch (err) {
       const msg = err.message || "Unknown error";
@@ -312,7 +312,7 @@ export default function PlipFormOnline() {
       const ligUpload = await uploadToLocal(ligFiles, "ligand");
       setLigandSession(ligUpload.session_id);
       
-      setStatus("🔧 Requesting PLIP analysis from server (no timeout - will run until complete)...");
+      setStatus(" Requesting PLIP analysis from server (no timeout - will run until complete)...");
       
       const jobData = new FormData();
       jobData.append("receptor_session", recUpload.session_id);
@@ -693,7 +693,7 @@ export default function PlipFormOnline() {
     <div className="max-w-6xl mx-auto p-8 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl shadow-2xl space-y-8 border-2 border-blue-400">
       {/* HEADER */}
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">🧬 PLIP Analysis</h2>
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight"> PLIP Analysis</h2>
         <p className="text-gray-600">Protein-Ligand Interaction Profiler</p>
         <div className="text-gray-500 text-sm mt-2">
           Supports: <span className="font-medium">.pdb, .pdbqt</span>
@@ -759,7 +759,7 @@ export default function PlipFormOnline() {
               <span className="text-xl">🔒</span> About Local Execution
             </p>
             <ul className="text-xs text-gray-700 space-y-1 text-left">
-              <li> ✓ First download the local backend from <a href="https://github.com/Naaji9/frameworkvs" target="_blank" rel="noopener noreferrer"   
+              <li> ✓ First download the local backend from <a href="https://github.com/combilab-furg/local_backend" target="_blank" rel="noopener noreferrer"   
                    style={{ color: "#1a73e8", textDecoration: "underline" }}> GitHub </a> </li>
 
               <li>✓ Your files stay on YOUR computer</li>
@@ -772,7 +772,7 @@ export default function PlipFormOnline() {
 
           {/* RECEPTOR - FILE UPLOAD */}
           <section className="space-y-2">
-            <label className="font-semibold text-gray-700 text-lg">🧬 Receptor</label>
+            <label className="font-semibold text-gray-700 text-lg"> Receptor</label>
             <div className="flex gap-2">
               <select
                 value={recMode}
@@ -840,7 +840,7 @@ export default function PlipFormOnline() {
 
           {/* LIGAND - FILE UPLOAD */}
           <section className="space-y-2">
-            <label className="font-semibold text-gray-700 text-lg">💊 Ligand</label>
+            <label className="font-semibold text-gray-700 text-lg"> Ligand</label>
             <div className="flex gap-2">
               <select
                 value={ligMode}
@@ -916,7 +916,7 @@ export default function PlipFormOnline() {
             <ul className="text-xs text-gray-700 space-y-1 text-left">
               <li>✓ Enter absolute paths to your files/folders</li>
               <li>✓ Script will be downloaded to your computer</li>
-              <li>✓ Run the script anywhere (local machine, cluster, etc.) using Python 3.6+</li>
+              <li>✓ Run the script anywhere (local machine, cluster, etc.) using Python 3+</li>
               <li>✓ No cloud upload - completely offline execution</li>
               <li>✓ Requires PLIP and Open Babel installed</li>
             </ul>
@@ -924,7 +924,7 @@ export default function PlipFormOnline() {
 
           {/* RECEPTOR PATH INPUT */}
           <section className="space-y-2" ref={receptorPathInputRef}>
-            <label className="font-semibold text-gray-700 text-lg">🧬 Receptor Path</label>
+            <label className="font-semibold text-gray-700 text-lg"> Receptor Path</label>
             <input
               value={receptorPath}
               onChange={(e) => handleReceptorPathChange(e.target.value)}
@@ -945,7 +945,7 @@ export default function PlipFormOnline() {
 
           {/* LIGAND PATH INPUT */}
           <section className="space-y-2" ref={ligandPathInputRef}>
-            <label className="font-semibold text-gray-700 text-lg">💊 Ligand Path</label>
+            <label className="font-semibold text-gray-700 text-lg"> Ligand Path</label>
             <input
               value={ligandPath}
               onChange={(e) => handleLigandPathChange(e.target.value)}
@@ -968,7 +968,7 @@ export default function PlipFormOnline() {
 
       {/* OUTPUT FOLDER (common for both modes) */}
       <section ref={outputPathInputRef}>
-        <label className="font-semibold text-gray-700 text-lg">📂 Output Folder</label>
+        <label className="font-semibold text-gray-700 text-lg">🗁 Output Folder</label>
         <input
           value={outputFolder}
           onChange={(e) => handleOutputFolderChange(e.target.value)}
@@ -1006,7 +1006,7 @@ export default function PlipFormOnline() {
       <div className="grid grid-cols-2 gap-4">
         <section className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border-2 border-blue-300 shadow-md">
           <label className="font-semibold text-gray-800 text-lg flex items-center gap-2">
-            🎯 Max Poses
+             Max Poses
           </label>
           <p className="text-sm text-gray-600 mt-2 mb-3">
             Poses to analyze per combination
@@ -1069,7 +1069,7 @@ export default function PlipFormOnline() {
                   value={localBackendUrl}
                   onChange={(e) => setLocalBackendUrl(e.target.value)}
                   className="w-full px-4 py-2 border-2 border-blue-300 rounded-lg"
-                  placeholder="http://127.0.0.1:5005"
+                  placeholder="http://127.0.0.1:5008"
                 />
               </div>
             )}
@@ -1185,7 +1185,7 @@ export default function PlipFormOnline() {
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-xl text-white">
-                  🧬 {combo.receptor || 'Unknown'} × 💊 {combo.ligand || 'Unknown'}
+                  🧬 {combo.receptor || 'Unknown'} ×  {combo.ligand || 'Unknown'}
                 </h4>
                 <div className="flex gap-4 text-white text-sm">
                   <div className="bg-white/20 px-3 py-1 rounded-full">
@@ -1279,7 +1279,7 @@ export default function PlipFormOnline() {
                   onClick={init3DViewers}
                   className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-lg shadow-lg"
                 >
-                  🚀 Load 3D Structures
+                   Load 3D Structures
                 </button>
               ) : (
                 <button

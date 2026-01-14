@@ -379,10 +379,10 @@ const instructions = `
       <div className="flex items-center justify-between pb-6 border-b-2 border-blue-300 dark:border-slate-700">
         <div>
           <h2 className="text-2xl font-bold text-blue-700 dark:text-blue-400 tracking-tight">Molecular Converter</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">AutoDock & OpenBabel Integration</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">AutoDock tools & OpenBabel Integration</p>
         </div>
         <div className="flex items-center gap-3">
-          <label htmlFor="dark-mode-toggle" className="text-sm font-medium text-gray-600 dark:text-gray-300">🌙 Dark Mode</label>
+          
           <input
             id="dark-mode-toggle"
             type="checkbox"
@@ -396,7 +396,7 @@ const instructions = `
       {/* Main settings */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-5 border-2 border-blue-300 dark:border-blue-800 rounded-xl bg-white dark:bg-slate-800 shadow-lg hover:shadow-xl transition-shadow">
-          <label className="block font-bold mb-3 text-gray-800 dark:text-gray-200 text-lg">📁 Mode</label>
+          <label className="block font-bold mb-3 text-gray-800 dark:text-gray-200 text-lg">🗁 Mode</label>
           <select 
             value={mode} 
             onChange={(e) => setMode(e.target.value)} 
@@ -663,7 +663,7 @@ const instructions = `
             onClick={() => singleFileRef.current.click()} 
             className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-8 py-3 rounded-lg shadow-lg transition-all duration-200 font-bold text-lg"
           >
-            🔍 Browse File
+             Browse File
           </button>
           {preview && (
             <div className="mt-6 p-5 border-2 border-green-400 dark:border-green-600 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 flex items-center justify-between shadow-lg">
@@ -690,7 +690,7 @@ const instructions = `
         // Folder Mode - Script Generation
         <div className="p-6 border-2 border-green-300 dark:border-green-700 rounded-xl bg-gradient-to-r from-green-50 to-lime-50 dark:from-slate-800 dark:to-slate-700 shadow-lg space-y-4">
           <div className="text-center mb-4">
-            <div className="text-5xl mb-2">📂</div>
+            <div className="text-5xl mb-2">🗁</div>
             <h3 className="text-2xl font-bold text-green-700 dark:text-green-400">Folder Conversion </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Generate a script to run conversions on your local machine</p>
           </div>
@@ -750,7 +750,7 @@ const instructions = `
           disabled={isConverting}
           className="flex-1 bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700 text-white px-8 py-4 rounded-xl shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 font-bold text-lg"
         >
-          {isConverting ? '⏳ Processing...' : mode === 'single' ? '🚀 Convert & Download' : ' Generate Script'}
+          {isConverting ? '⏳ Processing...' : mode === 'single' ? ' Convert & Download' : ' Generate Script'}
         </button>
         <button
           type="button"

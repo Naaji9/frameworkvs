@@ -1,10 +1,11 @@
 # backend/routes/zip_generator.py
 
 import io
+import os
 import zipfile
+import re
 from fastapi import APIRouter, Form
 from fastapi.responses import StreamingResponse, Response
-from typing import Optional
 
 # Import your existing generator functions
 from utils.framework_writer import generate_optimized_docking_script
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/docking", tags=["Script Generation"])
 
 
 def generate_readme(enable_plip: bool) -> str:
-    """Generate README.txt with execution instructions"""
+    """Generate comprehensive README.txt with installation instructions and links"""
     
     readme_content = """
 ================================================================================
@@ -27,216 +28,315 @@ CONTENTS OF THIS PACKAGE:
 """
     
     if enable_plip:
-        readme_content += """2. plip_analysis.py     - Protein-ligand interaction analysis script
-3. README.txt           - This file (execution instructions)
+        readme_content += """                          (with integrated PLIP analysis)
+2. README.txt           - This file (installation & execution instructions)
+
+NOTE: PLIP analysis runs automatically after docking completes!
 """
     else:
-        readme_content += """2. README.txt           - This file (execution instructions)
+        readme_content += """2. README.txt           - This file (installation & execution instructions)
 """
     
     readme_content += """
 
 ================================================================================
-                            SYSTEM REQUIREMENTS
+                            INSTALLATION GUIDE
 ================================================================================
 
-REQUIRED SOFTWARE:
-------------------
-1. Python 3.7 or higher
-2. AutoDock Vina (installed and accessible via command line)
-3. Open Babel (for molecular file format conversions)
-4. Required Python packages:
-   - pathlib
-   - concurrent.futures (built-in)
-"""
-    
-    if enable_plip:
-        readme_content += """   - plip (for interaction analysis)
-   - biopython (for structure manipulation)
-"""
-    
-    readme_content += """
-INSTALLATION OPTIONS:
----------------------
+OPTION 1: AUTOMATIC SETUP (RECOMMENDED - Using Conda Environment)
+------------------------------------------------------------------
+                    USING THE CONDA ENVIRONMENT FILE
+================================================================================
 
-OPTION 1 - RECOMMENDED (Using Conda Environment):
---------------------------------------------------
-This is the easiest way to install all dependencies at once!
+The environment.yml file from the github link repository includes all
+necessary dependencies pre-configured for optimal compatibility.
 
-1. Download the environment.yml file from:
-   https://github.com/Naaji9/FrameworkVS-3.0
+To use it:
+1. Download environment.yml from:
+   https://github.com/Naaji9/environment
 
-2. Create the conda environment:
+2. Create the environment:
    conda env create -f environment.yml
 
 3. Activate the environment:
-   conda activate frameworkvs
+   conda activate envi
 
-This will install Python, AutoDock Vina, Open Babel, PLIP, and all 
-required packages automatically!
-
-
-OPTION 2 - MANUAL INSTALLATION:
---------------------------------
-If you prefer to install dependencies individually:
-
-1. Install AutoDock Vina:
-   Visit: https://vina.scripps.edu/downloads/
-
-2. Install Open Babel:
-   conda install -c conda-forge openbabel
-   OR
-   Visit: http://openbabel.org/wiki/Category:Installation
-
-3. Install Python packages:
-   pip install biopython
+4. Verify installation:
+   python --version
+   vina --version
+   obabel -V
 """
     
     if enable_plip:
-        readme_content += """   pip install plip
+        readme_content += """   plip --version
 """
     
     readme_content += """
-4. Verify installations:
-   vina --help
-   obabel --help
 
-================================================================================
-                        STEP 1: RUNNING DOCKING
-================================================================================
+5. You're ready to run the scripts!
 
-COMMAND:
---------
-Option 1 (If using conda environment):
-   conda activate frameworkvs
-   python vsframework.py
 
-Option 2 (If using system Python):
-   python vsframework.py
+OPTION 2: MANUAL INSTALLATION
+------------------------------
 
-WHAT IT DOES:
--------------
-- Reads ligands from your specified ligand folder
-- Reads receptors from your specified receptor folder
-- Performs molecular docking using AutoDock Vina
-- Generates docked poses with binding affinity scores
-- Saves results to your specified output folder
+Step 1: Install Python
+   • Download Python 3.7+ from: https://www.python.org/downloads/
+   • Verify installation: python3 --version
 
-OUTPUT STRUCTURE:
------------------
-output_folder/
-├── receptor1/
-│   ├── ligand1_out.pdbqt
-│   ├── ligand2_out.pdbqt
-│   └── ...
-├── receptor2/
-│   └── ...
-└── summary_results.csv (binding scores and statistics)
+Step 2: Install Conda/Miniconda (Recommended)
+   • Download from: https://docs.conda.io/en/latest/miniconda.html
+   • Or Anaconda: https://www.anaconda.com/download
+   • Verify: conda --version
 
-IMPORTANT NOTES:
-----------------
-- Make sure your ligand and receptor paths are correctly set in the script
-- The script will create output directories automatically
-- Docking may take considerable time depending on the number of ligands
-- Monitor the console output for progress updates
+Step 3: Install AutoDock Vina
+   • Official site: https://vina.scripps.edu/downloads/
+   • GitHub releases: https://github.com/ccsb-scripps/AutoDock-Vina/releases
+   • Documentation: https://autodock-vina.readthedocs.io/
+   
+   Via conda (recommended):
+   conda install -c conda-forge vina
+   
+   Ubuntu/Debian:
+   sudo apt-get install autodock-vina
+   
+   From source:
+   git clone https://github.com/ccsb-scripps/AutoDock-Vina.git
+   cd AutoDock-Vina
+   # Follow build instructions in repository
+   
+   Verify installation:
+   vina --version
+
+Step 4: Install Open Babel
+   • Official site: https://openbabel.org/wiki/Category:Installation
+   • GitHub: https://github.com/openbabel/openbabel
+   • Releases: https://github.com/openbabel/openbabel/releases
+   
+   Via conda (recommended):
+   conda install -c conda-forge openbabel
+   
+   Ubuntu/Debian:
+   sudo apt-get install openbabel
+   
+   macOS (using Homebrew):
+   brew install open-babel
+   
+   Verify installation:
+   obabel -V
 """
     
     if enable_plip:
         readme_content += """
+Step 5: Install PLIP (Protein-Ligand Interaction Profiler)
+   • Official site: https://plip-tool.biotec.tu-dresden.de/
+   • GitHub: https://github.com/pharmai/plip
+   • Documentation: https://github.com/pharmai/plip/blob/master/DOCUMENTATION.md
+   
+   Via pip:
+   pip install plip
+   
+   Via conda:
+   conda install -c conda-forge plip
+   
+   From source:
+   git clone https://github.com/pharmai/plip.git
+   cd plip
+   pip install .
+   
+   Verify installation:
+   plip --version
+
+Step 6: Install Required Python Packages
+   pip install biopython numpy pathlib
+   
+   Or using conda:
+   conda install -c conda-forge biopython numpy
+"""
+    else:
+        readme_content += """
+Step 5: Install Required Python Packages (if needed)
+   pip install numpy pathlib
+   
+   Or using conda:
+   conda install -c conda-forge numpy
+"""
+    
+    readme_content += """
+
+
+INCLUDED IN environment.yml:
+• Python 3.9.18
+• AutoDock Vina (via openbabel 3.1.1)
+• Open Babel 3.1.1
+"""
+    
+    if enable_plip:
+        readme_content += """• PLIP 2.3.0
+• Biopython
+"""
+    
+    readme_content += """• NumPy, SciPy, and other scientific computing libraries
+• All required dependencies
+
+
+To remove the environment (if needed):
+conda env remove -n envi
+
+To update the environment:
+conda env update -f environment.yml
+
 
 ================================================================================
-                   STEP 2: PLIP ANALYSIS (RUNS AUTOMATICALLY)
+                        SYSTEM REQUIREMENTS
 ================================================================================
 
-✅ AUTOMATIC EXECUTION: PLIP analysis runs automatically after docking completes!
+MINIMUM REQUIREMENTS:
+---------------------
+• Operating System: Linux, macOS, or Windows (WSL recommended for Windows)
+• Python: 3 or higher (3.9+ recommended)
+• RAM: 4 GB minimum (8 GB+ recommended for large datasets)
+• CPU: Multi-core processor (recommended for parallel processing)
+• Disk Space: Varies by dataset size (minimum 1 GB free)
 
-HOW IT WORKS:
--------------
-When you run vsframework.py, it will:
-1. Complete all docking calculations
-2. Automatically trigger plip_analysis.py
-3. Analyze protein-ligand interactions from docked poses
+REQUIRED SOFTWARE:
+------------------
+✓ Python 3+
+✓ AutoDock Vina
+✓ Open Babel
+"""
+    
+    if enable_plip:
+        readme_content += """✓ PLIP (Protein-Ligand Interaction Profiler)
+✓ Biopython
+"""
+    
+    readme_content += """
 
-NO MANUAL INTERVENTION NEEDED!
+RECOMMENDED:
+------------
+• Conda/Miniconda for package management
+• Multi-core CPU for faster processing
+• SSD for improved I/O performance
 
-WHAT PLIP DOES:
----------------
-- Analyzes protein-ligand interactions from docked poses
-- Identifies hydrogen bonds, hydrophobic contacts, salt bridges, etc.
-- Generates detailed interaction reports
-- Uses the OUTPUT from docking as INPUT
+PYTHON PACKAGES:
+• Biopython: https://biopython.org/
+• NumPy: https://numpy.org/
 
-WORKFLOW:
----------
-1. vsframework.py creates docked poses → output_folder/
-2. vsframework.py automatically calls plip_analysis.py
-3. plip_analysis.py reads from → output_folder/
-4. plip_analysis.py saves results to → output_folder/plip_analysis/
 
-OUTPUT STRUCTURE:
------------------
-output_folder/plip_analysis/
-├── receptor1/
-│   ├── ligand1_pose1
-│   ├── ligand1_pose2
-│   ├── ligand2_pose3
-│   └── ...
-├── receptor2/
-│   └── ...
-└── plip_summary.csv (aggregated interaction data)
+================================================================================
+                    VERIFYING YOUR INSTALLATION
+================================================================================
 
-INTERACTION TYPES DETECTED:
-----------------------------
-- Hydrogen bonds
-- Hydrophobic contacts
-- Salt bridges
-- π-stacking interactions
-- Halogen bonds
-- Water bridges (if water molecules present)
-- Metal complexes
+Run these commands to verify everything is installed correctly:
 
-IMPORTANT NOTES:
-----------------
-- Automatically runs after docking completes
-- Will analyze up to the specified number of poses per ligand
-- May take additional time depending on the number of complexes
-- Generates both text reports and JSON data for further analysis
-- The plip_analysis.py script is included for reference or manual re-runs
+1. Check Python version:
+   python3 --version
+   Expected: Python 3.7.x or higher
+
+2. Check Conda (if using):
+   conda --version
+   Expected: conda 4.x.x or higher
+
+3. Check AutoDock Vina:
+   vina --version
+   Expected: AutoDock Vina version information
+
+4. Check Open Babel:
+   obabel -V
+   Expected: Open Babel version information
+"""
+    
+    if enable_plip:
+        readme_content += """
+5. Check PLIP:
+   plip --version
+   Expected: PLIP version information
+
+6. Check Python packages:
+   python3 -c "import Bio; print('Biopython: OK')"
+   python3 -c "import numpy; print('NumPy: OK')"
+   Expected: Success messages for each package
+"""
+    else:
+        readme_content += """
+5. Check Python packages:
+   python3 -c "import numpy; print('NumPy: OK')"
+   Expected: NumPy: OK
+"""
+    
+    readme_content += """
+
+COMPLETE VERIFICATION (if using conda environment):
+conda activate envi
+python3 -c "import sys; print(f'Python {sys.version}')"
+vina --version
+obabel -V
+"""
+    
+    if enable_plip:
+        readme_content += """plip --version
 """
     
     readme_content += """
 
 ================================================================================
-                            EXECUTION WORKFLOW
+                        RUNNING THE DOCKING SCRIPT
 ================================================================================
 
+BASIC USAGE:
+------------
+1. Activate the conda environment (if using):
+   conda activate envi
+
+2. Navigate to the directory containing vsframework.py
+
+3. Run the script:
+   python3 vsframework.py
+
+The script will:
+• Validate all required software is installed
+• Process ligand and receptor files from configured paths
+• Run AutoDock Vina docking simulations
 """
     
     if enable_plip:
-        readme_content += """COMPLETE WORKFLOW WITH PLIP:
------------------------------
-1. Run: python vsframework.py
-   → Performs all docking calculations
-   → Automatically runs PLIP analysis after docking completes
-   → Wait for full completion (may take hours for large datasets)
-   
-2. Check results:
-   → Docked poses: output_folder/
-   → PLIP interactions: output_folder/plip_analysis/
-
-3. Analyze results using the generated CSV files
-
-NOTE: You only need to run vsframework.py - it handles everything!
-      The plip_analysis.py file is included for reference or manual re-runs.
+        readme_content += """• Automatically analyze protein-ligand interactions with PLIP
+• Generate comprehensive analysis reports
 """
-    else:
-        readme_content += """DOCKING-ONLY WORKFLOW:
-----------------------
-1. Run: python vsframework.py
-   → Wait for completion (may take hours for large datasets)
-   → Check output_folder/ for docked poses
+    
+    readme_content += """• Save results to the specified output directory
+"""
+    
+    if enable_plip:
+        readme_content += """• Save PLIP analysis to: [output_folder]/../plip_analysis/
 
-2. Analyze results using the generated summary CSV file
+PLIP ANALYSIS:
+--------------
+After docking completes, PLIP will automatically:
+• Analyze top poses for each ligand
+• Identify hydrogen bonds, hydrophobic contacts, salt bridges
+• Generate detailed interaction reports
+• Create visualization-ready output files
+"""
+    
+    readme_content += """
+
+EXPECTED RUNTIME:
+-----------------
+• Depends on: number of ligands, receptors, exhaustiveness setting
+• Can range from minutes to hours for large datasets
+• Progress is displayed in real-time
+
+EXPECTED OUTPUT:
+----------------
+• Docked conformations in PDBQT format
+• Scoring data and affinity predictions
+• Ranking of top poses per ligand
+"""
+    
+    if enable_plip:
+        readme_content += """• PLIP interaction analysis reports (XML, TXT)
+• Visualization files compatible with PyMOL, VMD
 """
     
     readme_content += """
@@ -245,72 +345,236 @@ NOTE: You only need to run vsframework.py - it handles everything!
                             TROUBLESHOOTING
 ================================================================================
 
-COMMON ISSUES:
---------------
+COMMON ISSUES AND SOLUTIONS:
 
-1. "vina: command not found" or "obabel: command not found"
-   → AutoDock Vina or Open Babel is not installed or not in PATH
-   → Solution: Use the conda environment (Option 1) or install manually
-   → If using conda: conda activate frameworkvs
+1. "Command not found" errors:
+   • Ensure software is installed: which vina
+   • Check PATH variable includes installation directory
+   • Try with full path: /path/to/vina --version
+   • For conda users: ensure environment is activated
 
-2. "No such file or directory" errors
-   → Check that ligand_folder and receptor_folder paths are correct
-   → Ensure paths use forward slashes (/) or proper escaping
+2. Import errors for Python packages:
+   • Verify installation: pip list | grep package-name
+   • Reinstall: pip install --upgrade package-name
+   • For conda: conda list package-name
 
-3. "Permission denied" errors
-   → Ensure you have write permissions for the output folder
-   → Run with appropriate user permissions
+3. Permission errors:
+   • Check file permissions: ls -l vsframework.py
+   • Make executable: chmod +x vsframework.py
+   • Check output directory write permissions
+
+4. Conda environment issues:
+   • List environments: conda env list
+   • Recreate environment:
+     conda env remove -n envi
+     conda env create -f environment.yml
+   • Update conda: conda update -n base conda
+
+5. AutoDock Vina not found:
+   • Conda install: conda install -c conda-forge vina
+   • Add to PATH or use full path in script
+   • Verify: which vina
 
 """
     
     if enable_plip:
-        readme_content += """4. "Module 'plip' not found"
-   → PLIP is not installed
-   → Solution: pip install plip (or use conda environment)
-
-5. PLIP finds no docked poses
-   → Wait for vsframework.py to fully complete (it runs PLIP automatically)
-   → Check console output for any PLIP-related errors
-   → Verify .pdbqt files exist in the output folder
-   → You can manually run plip_analysis.py if needed
+        readme_content += """6. PLIP analysis fails:
+   • Check PLIP installation: plip --version
+   • Verify input file formats (PDBQT, PDB)
+   • Check output directory permissions
+   • Review error messages in terminal output
 
 """
     
     readme_content += """
-PERFORMANCE TIPS:
------------------
-- Use multiple CPU cores (configured in the scripts)
-- Process ligands in chunks for very large datasets
-- Monitor system resources during execution
-- Consider running on HPC clusters for large-scale screening
+
+
 
 ================================================================================
-                              SUPPORT
-================================================================================
-
-For issues or questions:
-- Check script console output for error messages
-- Verify all dependencies are installed correctly
-- Ensure input file formats are correct (PDBQT for Vina)
-- Review AutoDock Vina documentation for docking parameters
-
-================================================================================
-                         GENERATED PARAMETERS
-================================================================================
-
-Review the actual parameter values at the top of each Python script.
-Modify them if needed before running the scripts.
-
-"""
-    
-    readme_content += """
-Generated on: [Auto-generated by COMBIVS]
-Frameworkvs : 3.0
-
+Generated by: COMBIVS FrameworkVS 3.0
 ================================================================================
 """
     
     return readme_content
+
+def extract_plip_functions(plip_script: str) -> str:
+    """Extract only function definitions from PLIP script"""
+    lines = plip_script.split('\n')
+    
+    # Find where the main execution starts
+    main_start_idx = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith('if __name__ == "__main__":'):
+            main_start_idx = i
+            break
+    
+    # Take everything before main
+    if main_start_idx:
+        function_lines = lines[:main_start_idx]
+    else:
+        function_lines = lines
+    
+    # Remove shebang and initial docstrings
+    result_lines = []
+    docstring_count = 0
+    
+    for line in function_lines:
+        if line.startswith('#!/usr/bin/env python'):
+            continue
+        if '"""' in line and docstring_count < 2:
+            docstring_count += 1
+            continue
+        if docstring_count < 2:
+            continue
+        result_lines.append(line)
+    
+    return '\n'.join(result_lines)
+
+
+def create_merged_script(vsframework_script: str, plip_script: str, 
+                        receptor_folder: str, output_path: str,
+                        plip_max_poses: int, plip_max_workers: int) -> str:
+    """
+    Merge PLIP into vsframework - PLIP at BOTTOM, uses docking paths
+    """
+    
+    print("🔧 Starting merge...")
+    
+    # Extract PLIP functions
+    plip_functions = extract_plip_functions(plip_script)
+    print(f"   Extracted {len(plip_functions)} chars of PLIP code")
+    
+    # Rename main() to run_plip_analysis()
+    plip_functions = plip_functions.replace('def main():', 'def run_plip_analysis():')
+    
+    # Remove PLIP's hardcoded config
+    plip_functions = re.sub(
+        r'RECEPTOR_PATH = r".*?"\nLIGAND_PATH = r".*?"\nOUTPUT_FOLDER = r".*?"',
+        '',
+        plip_functions
+    )
+    plip_functions = re.sub(r'MAX_POSES = \d+\nMAX_WORKERS = \d+', '', plip_functions)
+    plip_functions = re.sub(r'REMOVE_WATERS = \w+\nREMOVE_IONS = \w+', '', plip_functions)
+    plip_functions = re.sub(r'ADD_HYDROGENS = \w+\nKEEP_HETERO = \w+', '', plip_functions)
+    
+    # PLIP config flag (goes after docking config)
+    plip_config = f"""
+ENABLE_PLIP = True
+PLIP_MAX_POSES = {plip_max_poses}
+PLIP_MAX_WORKERS = {plip_max_workers}
+"""
+    
+    # PLIP runner (uses docking paths)
+    plip_runner = """
+
+# ============================================================================
+# PLIP ANALYSIS - RUNS AUTOMATICALLY AFTER DOCKING
+# ============================================================================
+
+def run_plip_if_enabled():
+    \"\"\"Run PLIP using docking paths\"\"\"
+    if not ENABLE_PLIP:
+        return
+    
+    # Use docking paths
+    plip_receptor = receptor_folder
+    plip_ligand = output_path
+    plip_output = os.path.join(os.path.dirname(output_path.rstrip('/')), 'plip_analysis')
+    
+    print("\\n" + "="*80)
+    print("🔬 DOCKING COMPLETE - STARTING PLIP")
+    print("="*80)
+    print(f"Receptor: {plip_receptor}")
+    print(f"Ligand: {plip_ligand}")
+    print(f"Output: {plip_output}")
+    print("="*80)
+    
+    try:
+        globals()['RECEPTOR_PATH'] = plip_receptor
+        globals()['LIGAND_PATH'] = plip_ligand
+        globals()['OUTPUT_FOLDER'] = plip_output
+        globals()['MAX_POSES'] = PLIP_MAX_POSES
+        globals()['MAX_WORKERS'] = PLIP_MAX_WORKERS
+        globals()['REMOVE_WATERS'] = False
+        globals()['REMOVE_IONS'] = False
+        globals()['ADD_HYDROGENS'] = True
+        globals()['KEEP_HETERO'] = True
+        
+        run_plip_analysis()
+        
+        print("\\n" + "="*80)
+        print("✅ PLIP COMPLETED!")
+        print("="*80)
+    except Exception as e:
+        print(f"\\n❌ PLIP failed: {e}")
+        import traceback
+        traceback.print_exc()
+"""
+    
+    lines = vsframework_script.split('\n')
+    
+    # Find if __name__ == "__main__":
+    main_idx = None
+    for i, line in enumerate(lines):
+        if 'if __name__ == "__main__":' in line:
+            main_idx = i
+            break
+    
+    # Build merged script
+    merged_lines = []
+    
+    # Part 1: Docking code (everything before if __name__)
+    if main_idx:
+        merged_lines.extend(lines[:main_idx])
+    else:
+        merged_lines.extend(lines)
+    
+    # Insert ENABLE_PLIP after output_path
+    merged_temp = '\n'.join(merged_lines)
+    if 'os.makedirs(output_path, exist_ok=True)' in merged_temp:
+        merged_temp = merged_temp.replace(
+            'os.makedirs(output_path, exist_ok=True)',
+            'os.makedirs(output_path, exist_ok=True)' + plip_config
+        )
+    merged_lines = merged_temp.split('\n')
+    
+    # Part 2: Add PLIP at bottom (before if __name__)
+    merged_lines.append('\n')
+    merged_lines.append('# ============================================================================')
+    merged_lines.append('# EMBEDDED PLIP - AUTO-RUNS AFTER DOCKING')
+    merged_lines.append('# ============================================================================')
+    merged_lines.append(plip_functions)
+    merged_lines.append(plip_runner)
+    merged_lines.append('\n')
+    
+    # Part 3: Add if __name__
+    if main_idx:
+        merged_lines.extend(lines[main_idx:])
+    
+    merged_script = '\n'.join(merged_lines)
+    
+    # Add PLIP call in run() function
+    if 'run_plip_if_enabled()' not in merged_script:
+        lines = merged_script.split('\n')
+        new_lines = []
+        in_run = False
+        
+        for line in lines:
+            new_lines.append(line)
+            
+            if line.strip().startswith('def run():'):
+                in_run = True
+            
+            if in_run and 'extract_scores()' in line and not line.strip().startswith('def'):
+                indent = len(line) - len(line.lstrip())
+                new_lines.append(' ' * indent + 'run_plip_if_enabled()')
+                in_run = False
+        
+        merged_script = '\n'.join(new_lines)
+    
+    print(f"✅ Merge complete: {len(merged_script)} chars")
+    
+    return merged_script
 
 
 @router.post("/generate-script")
@@ -337,7 +601,6 @@ async def generate_single_script(
     max_workers: int = Form(1),
     output_path: str = Form(...),
     blind_docking: bool = Form(False),
-    # PLIP parameters (ignored for single file, but needed for buildFormData)
     enable_plip: bool = Form(False),
     plip_max_poses: int = Form(5),
     plip_max_workers: int = Form(4),
@@ -346,9 +609,11 @@ async def generate_single_script(
     plip_add_hydrogens: bool = Form(True),
     plip_keep_hetero: bool = Form(True),
 ):
-    """Generate only vsframework.py as a single file download"""
+    """Generate vsframework.py with embedded PLIP"""
     
-    # Generate vsframework.py using your existing writer
+    print(f"🔍 enable_plip = {enable_plip}")
+    
+    # Generate base docking script (NO PLIP)
     vsframework_script = generate_optimized_docking_script(
         ligand_folder=ligand_folder,
         receptor_folder=receptor_folder,
@@ -362,17 +627,45 @@ async def generate_single_script(
         vina_cores=vina_cores,
         chunk_mode=chunk_mode,
         output_path=output_path,
-        enable_plip=enable_plip,
+        enable_plip=False,  # Always False - we merge manually
         return_as_text=True
     )
     
-    # Return as plain text file
+    print(f"✅ Base script: {len(vsframework_script)} chars")
+    
+    # Merge PLIP if enabled
+    if enable_plip:
+        print("🔬 Merging PLIP...")
+        
+        plip_output_path = os.path.join(os.path.dirname(output_path.rstrip('/')), 'plip_analysis')
+        
+        plip_script = generate_standalone_script(
+            receptor_path=receptor_folder,
+            ligand_path=output_path,
+            output_folder=plip_output_path,
+            max_poses=plip_max_poses,
+            max_workers=plip_max_workers,
+            remove_waters=plip_remove_waters,
+            remove_ions=plip_remove_ions,
+            add_hydrogens=plip_add_hydrogens,
+            keep_hetero=plip_keep_hetero
+        )
+        
+        vsframework_script = create_merged_script(
+            vsframework_script, 
+            plip_script,
+            receptor_folder,
+            output_path,
+            plip_max_poses,
+            plip_max_workers
+        )
+        
+        print(f"✅ Merged: {len(vsframework_script)} chars")
+    
     return Response(
         content=vsframework_script,
         media_type="text/plain",
-        headers={
-            "Content-Disposition": "attachment; filename=vsframework.py"
-        }
+        headers={"Content-Disposition": "attachment; filename=vsframework.py"}
     )
 
 
@@ -400,7 +693,6 @@ async def generate_scripts_zip(
     max_workers: int = Form(1),
     output_path: str = Form(...),
     blind_docking: bool = Form(False),
-    # PLIP parameters
     enable_plip: bool = Form(False),
     plip_max_poses: int = Form(5),
     plip_max_workers: int = Form(4),
@@ -409,9 +701,11 @@ async def generate_scripts_zip(
     plip_add_hydrogens: bool = Form(True),
     plip_keep_hetero: bool = Form(True),
 ):
-    """Generate both vsframework.py and plip_analysis.py as ZIP"""
+    """Generate ZIP with vsframework.py (+ PLIP if enabled) and README"""
     
-    # Generate vsframework.py using your existing writer
+    print(f"🔍 enable_plip = {enable_plip}")
+    
+    # Generate base docking script (NO PLIP)
     vsframework_script = generate_optimized_docking_script(
         ligand_folder=ligand_folder,
         receptor_folder=receptor_folder,
@@ -425,42 +719,54 @@ async def generate_scripts_zip(
         vina_cores=vina_cores,
         chunk_mode=chunk_mode,
         output_path=output_path,
-        enable_plip=enable_plip,
+        enable_plip=False,  # Always False - we merge manually
         return_as_text=True
     )
     
-    # Generate README content
+    print(f"✅ Base script: {len(vsframework_script)} chars")
+    
+    # Merge PLIP if enabled
+    if enable_plip:
+        print("🔬 Merging PLIP...")
+        
+        plip_output_path = os.path.join(os.path.dirname(output_path.rstrip('/')), 'plip_analysis')
+        
+        plip_script = generate_standalone_script(
+            receptor_path=receptor_folder,
+            ligand_path=output_path,
+            output_folder=plip_output_path,
+            max_poses=plip_max_poses,
+            max_workers=plip_max_workers,
+            remove_waters=plip_remove_waters,
+            remove_ions=plip_remove_ions,
+            add_hydrogens=plip_add_hydrogens,
+            keep_hetero=plip_keep_hetero
+        )
+        
+        vsframework_script = create_merged_script(
+            vsframework_script, 
+            plip_script,
+            receptor_folder,
+            output_path,
+            plip_max_poses,
+            plip_max_workers
+        )
+        
+        print(f"✅ Merged: {len(vsframework_script)} chars")
+    
+    # Generate README
     readme_content = generate_readme(enable_plip)
     
-    # Create ZIP in memory
+    # Create ZIP
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Add README first for better UX
         zip_file.writestr("README.txt", readme_content)
-        
-        # Add vsframework.py
         zip_file.writestr("vsframework.py", vsframework_script)
-        
-        # Add plip script if enabled
-        if enable_plip:
-            # Create PLIP subfolder path
-            plip_output = output_path.rstrip('/') + "/plip_analysis"
-            
-            plip_script = generate_standalone_script(
-                receptor_path=receptor_folder,      # Same receptor as docking
-                ligand_path=output_path,            # Docking OUTPUT becomes PLIP input ✅
-                output_folder=plip_output,          # PLIP results go to subfolder ✅
-                max_poses=plip_max_poses,
-                max_workers=plip_max_workers,
-                remove_waters=plip_remove_waters,
-                remove_ions=plip_remove_ions,
-                add_hydrogens=plip_add_hydrogens,
-                keep_hetero=plip_keep_hetero
-            )
-            zip_file.writestr("plip_analysis.py", plip_script)
     
     zip_buffer.seek(0)
+    
+    print("📦 ZIP created")
     
     return StreamingResponse(
         zip_buffer,

@@ -270,7 +270,7 @@ return (
   <div className="max-w-6xl mx-auto p-8 bg-gradient-to-br from-purple-50 to-indigo-100 rounded-2xl shadow-2xl space-y-8 border-2 border-blue-800">
     {/* HEADER */}
     <div className="text-center">
-      <h2 className="text-3xl font-bold text-gray-900 tracking-tight">🧬 RFL-Score ML Scoring</h2>
+      <h2 className="text-3xl font-bold text-gray-900 tracking-tight"> RFL-Score ML Scoring</h2>
       <p className="text-gray-600">Random Forest + Lasso Regression for Binding Affinity Prediction</p>
       <div className="text-gray-500 text-sm mt-2">
         Supports: <span className="font-medium">.pdb, .pdbqt (docking poses)</span>
@@ -323,7 +323,7 @@ return (
 
     {/* EXECUTION MODE SELECTOR - NOW FIRST */}
     <section className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-xl border-2 border-blue-400 shadow-md">
-      <label className="font-semibold text-gray-800 text-lg mb-3 block">🎯 Execution Mode</label>
+      <label className="font-semibold text-gray-800 text-lg mb-3 block"> Execution Mode</label>
       <div className="grid grid-cols-2 gap-4">
         <label className={`flex items-center gap-3 p-5 rounded-lg border-2 cursor-pointer transition ${
           executionMode === "run" 
@@ -776,7 +776,7 @@ return (
           {/* Max Poses to Score */}
           <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-300">
             <label className="font-semibold text-gray-800 flex items-center gap-2 mb-2">
-              <span className="text-lg">🎯</span> Max Poses to Score per Ligand
+               Max Poses to Score per Ligand
             </label>
             <p className="text-xs text-gray-600 mb-3">
               Limit number of poses to score (lower = faster, higher = more complete)
@@ -865,7 +865,7 @@ return (
           disabled={isWorking}
           className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-lg rounded-xl disabled:opacity-60 shadow-lg transition"
         >
-          {isWorking ? "🔄 Running ML Analysis..." : "🚀 Run RFL-Score ML Scoring"}
+          {isWorking ? "🔄 Running ML Analysis..." : " Run RFL-Score ML Scoring"}
         </button>
       ) : (
         <button
@@ -873,7 +873,7 @@ return (
           disabled={isWorking}
           className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-lg rounded-xl disabled:opacity-60 shadow-lg transition"
         >
-          {isWorking ? "📝 Generating Script..." : "📥 Download Standalone Script"}
+          {isWorking ? "📝 Generating Script..." : " Download Standalone Script"}
         </button>
       )}
     </div>

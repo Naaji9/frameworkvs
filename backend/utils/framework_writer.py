@@ -43,10 +43,10 @@ def run_plip_if_enabled():
         return
     
     print("\\n" + "="*80)
-    print("🧬 DOCKING COMPLETE - STARTING PLIP ANALYSIS")
+    print(" DOCKING COMPLETE - STARTING PLIP ANALYSIS")
     print("="*80)
-    print(f"📂 Analyzing docking results from: {output_path}")
-    print(f"🔬 PLIP output will be saved to: {output_path}/plip_analysis/")
+    print(f" Analyzing docking results from: {output_path}")
+    print(f" PLIP output will be saved to: {output_path}/plip_analysis/")
     print("="*80 + "\\n")
     
     try:
@@ -56,18 +56,18 @@ def run_plip_if_enabled():
             capture_output=False  # Show PLIP output in real-time
         )
         print("\\n" + "="*80)
-        print("✅ PLIP ANALYSIS COMPLETED SUCCESSFULLY!")
+        print(" PLIP ANALYSIS COMPLETED SUCCESSFULLY!")
         print("="*80)
     except subprocess.CalledProcessError as e:
         print("\\n" + "="*80)
-        print(f"❌ PLIP analysis failed with error code: {e.returncode}")
+        print(f"✖️ PLIP analysis failed with error code: {e.returncode}")
         print("="*80)
         print("⚠️  Don't worry - your docking results are safe!")
         print(f"    Check {output_path} for docking results.")
     except FileNotFoundError:
-        print("\\n❌ Error: python3 not found. Please ensure Python 3 is installed.")
+        print("\\n✖️ Error: python3 not found. Please ensure Python 3 is installed.")
     except Exception as e:
-        print(f"\\n❌ Unexpected error during PLIP analysis: {e}")
+        print(f"\\n✖️ Unexpected error during PLIP analysis: {e}")
         print("⚠️  Docking results are safe and available.")
 """
         plip_call = """
@@ -122,7 +122,7 @@ def fix_user_path(path: str, name: str) -> str:
             print(f" Fixed '{{part}}' → '{{match[0]}}'")
             current = os.path.join(current, match[0])
         else:
-            print(f"❌ Cannot resolve '{{part}}' in '{{current}}'")
+            print(f"✖️ Cannot resolve '{{part}}' in '{{current}}'")
             return candidate
 
     if " " in current:
@@ -207,7 +207,7 @@ def convert_to_pdbqt(path):
         print(f"✓ PDBQT already exists: {{os.path.basename(out)}}")
         return out
     
-    print(f"🔄 Converting: {{os.path.basename(path)}} -> {{os.path.basename(out)}}")
+    print(f"🗘 Converting: {{os.path.basename(path)}} -> {{os.path.basename(out)}}")
     
     try:
         subprocess.run([
@@ -220,7 +220,7 @@ def convert_to_pdbqt(path):
         print(f"✓ Converted: {{os.path.basename(path)}}")
         return out
     except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to convert {{os.path.basename(path)}}: {{e.stderr}}")
+        print(f"✖️ Failed to convert {{os.path.basename(path)}}: {{e.stderr}}")
         return None
 
 def convert_all(paths):
@@ -230,7 +230,7 @@ def convert_all(paths):
     for path in paths:
         # If it's a directory, process all files in it
         if os.path.isdir(path):
-            print(f"\\n📁 Processing directory: {{path}}")
+            print(f"\\n 🗁 Processing directory: {{path}}")
             # Get all supported files in directory
             files = []
             for ext in (".pdb", ".sdf", ".mol2", ".pdbqt"):
@@ -255,11 +255,11 @@ def convert_all(paths):
 
 def load_ligands(path):
     \"\"\"Load ligands - supports both single file and directory.\"\"\"
-    print(f"\\n🟢 Loading ligands from: {{path}}")
+    print(f"\\n Loading ligands from: {{path}}")
     
     # Check if path exists
     if not os.path.exists(path):
-        print(f"❌ ERROR: Ligand path does not exist: {{path}}")
+        print(f"✖️ ERROR: Ligand path does not exist: {{path}}")
         return []
     
     # If it's a directory, return list of all supported files
@@ -276,11 +276,11 @@ def load_ligands(path):
 
 def load_receptors(path):
     \"\"\"Load receptors - supports both single file and directory.\"\"\"
-    print(f"\\n🟢 Loading receptors from: {{path}}")
+    print(f"\\n Loading receptors from: {{path}}")
     
     # Check if path exists
     if not os.path.exists(path):
-        print(f"❌ ERROR: Receptor path does not exist: {{path}}")
+        print(f"✖️ ERROR: Receptor path does not exist: {{path}}")
         return []
     
     # If it's a directory, return list of all supported files
@@ -310,13 +310,13 @@ receptors = convert_all(receptor_files)
 
 # Check if we have any ligands/receptors
 if not ligands:
-    print("\\n❌ ERROR: No ligands to process. Exiting.")
+    print("\\n✖️ ERROR: No ligands to process. Exiting.")
     exit(1)
 if not receptors:
-    print("\\n❌ ERROR: No receptors to process. Exiting.")
+    print("\\n✖️ ERROR: No receptors to process. Exiting.")
     exit(1)
 
-print(f"\\n🔵 Ready to dock: {{len(ligands)}} ligands vs {{len(receptors)}} receptors")
+print(f"\\n  Ready to dock: {{len(ligands)}} ligands vs {{len(receptors)}} receptors")
 
 
 # === Vina Command & Output ===
@@ -373,7 +373,7 @@ def run_task(task, checkpoint_file, completed):
         progress_counter.value += 1
         percent = int((progress_counter.value / TOTAL_TASKS) * 100)
         with print_lock:
-            print(f"🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷 Progress: {{progress_counter.value}}/{{TOTAL_TASKS}} ({{percent}}%)")
+            print(f"▶ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ▶ ◆︎ ◆︎ Progress: {{progress_counter.value}}/{{TOTAL_TASKS}} ({{percent}}%)")
 
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
@@ -391,17 +391,17 @@ def run_task(task, checkpoint_file, completed):
         else:
             with failed_counter.get_lock():
                 failed_counter.value += 1
-            print(f"❌ Docking failed or output missing: {{label}}")
+            print(f"✖️ Docking failed or output missing: {{label}}")
 
     except Exception as e:
         with failed_counter.get_lock():
             failed_counter.value += 1
-        print(f"❌ Error: {{label}} - {{str(e)}}")
+        print(f"✖️ Error: {{label}} - {{str(e)}}")
 
     finally:
         dur = time.time() - start
         with print_lock:
-            print(f"⏱️ {{label}} done in {{dur:.2f}}s")
+            print(f"⏱ {{label}} done in {{dur:.2f}}s")
 
 # === Batch Runner ===
 def run_batch(group, checkpoint_file, completed):
@@ -430,7 +430,7 @@ def extract_scores():
             writer = csv.writer(f)
             writer.writerow(["File", "Affinity", "RMSD_LB", "RMSD_UB"])
             writer.writerows(rows)
-        print(f"📄 Vina scores saved to: {{csv_path}}")
+        print(f" Vina scores saved to: {{csv_path}}")
 
         TOP_N = {topbest}
         top_hits = rows[:TOP_N]
@@ -440,7 +440,7 @@ def extract_scores():
             writer.writerow(["Rank", "File", "Affinity", "RMSD_LB", "RMSD_UB"])
             for i, row in enumerate(top_hits, 1):
                 writer.writerow([i] + row)
-        print(f"📊 Top {{len(top_hits)}} hits saved to: {{top_csv}}")
+        print(f" Top {{len(top_hits)}} hits saved to: {{top_csv}}")
     else:
         print("⚠️ No scores found to write.")
 {plip_function}
@@ -464,7 +464,7 @@ def run():
         tasks = generate_tasks(chunk, receptors)
         TOTAL_TASKS = len(tasks)
         total_tasks += TOTAL_TASKS
-        print(f"📄 Total tasks in this chunk: {{TOTAL_TASKS}}")
+        print(f" Total tasks in this chunk: {{TOTAL_TASKS}}")
 
         with ProcessPoolExecutor(max_workers=max_workers) as pool:
             futures = [pool.submit(run_task, task, checkpoint_file, completed) for task in tasks]
@@ -475,7 +475,7 @@ def run():
     dur_minutes = dur / 60
     failed = failed_counter.value
     success = total_tasks - failed
-    print(f"\\n☑️ All chunks completed. Total docking tasks processed: {{total_tasks}}")
+    print(f"\\n All chunks completed. Total docking tasks processed: {{total_tasks}}")
     print(f"🟢 Success: {{success}} / {{total_tasks}}")
     print(f"🔴 Failed: {{failed}}")
     print(f"⏱ Docking completed in {{dur:.2f}} seconds ({{dur_minutes:.2f}} minutes).")
@@ -498,6 +498,6 @@ if __name__ == "__main__":
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, "w") as f:
         f.write(script)
-    print(f"✅ Script generated and saved to: {save_path}")
+    print(f" ✔ Script generated and saved to: {save_path}")
 
     return save_path

@@ -1175,7 +1175,7 @@ const handleGenerateScript = async () => {
   return (
     <>
 {showBasePathModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black-0.2">
     <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
 
       <h3 className="text-xl font-bold mb-4 text-blue-700">📘 Path Usage Information</h3>
@@ -1185,7 +1185,7 @@ const handleGenerateScript = async () => {
       </p>
 
       <div className="bg-blue-50 p-3 rounded-md mb-4 text-sm text-gray-800 border border-blue-200">
-        <strong>➡ To GENERATE a docking script (vsframework.py): </strong>
+        <strong>➡ To GENERATE a docking script (vsframework.py and Plip script): </strong>
         <br />
         Make sure ALL paths are FULL absolute paths:
         <br />• Ligand folder/file 
@@ -1194,12 +1194,12 @@ const handleGenerateScript = async () => {
         <br />
         These will be written directly into your generated Python script.
       </div>
-
+{/* 
       <div className="bg-green-50 p-3 rounded-md mb-4 text-sm text-gray-800 border border-green-200">
         <strong>➡ To RUN DOCKING NOW inside the frameworkvs:</strong>
         <br />
         Only ensure the <strong>output folder path</strong> is a valid full absolute path.
-      </div>
+      </div> */}
 
       <p className="text-xs text-gray-500 mb-4">
         This information popup appears only on your first visit.  
@@ -1526,7 +1526,7 @@ const handleGenerateScript = async () => {
         {/* Grid Box */}
 <div className="mb-8 p-4 bg-gray-50 rounded-md border border-gray-200">
   <div className="flex justify-between items-center mb-4">
-    <h3 className="text-xl font-semibold text-blue-700">📦 Grid Box Parameters</h3>
+    <h3 className="text-xl font-semibold text-blue-700"> Grid Box Parameters</h3>
     <span className="text-sm text-gray-400">Docking Box</span>
   </div>
       {/* 📦 Box file upload below grid box UI */}
@@ -1767,7 +1767,7 @@ Blind Docking (auto-box over receptor surface)
 
       <div className="mt-4">
         <label className="block font-medium text-gray-700">
-          🧪 Vina Threads per Task <span className="text-red-500">*</span>
+           Vina Threads per Task <span className="text-red-500">*</span>
         </label>
         <input
           type="number"
@@ -1811,7 +1811,7 @@ Blind Docking (auto-box over receptor surface)
       )}
 
       <div className="mt-4">
-        <label className="block font-medium text-gray-700">🧪 Vina score best top-N</label>
+        <label className="block font-medium text-gray-700"> Vina score best top-N</label>
         <input
           type="number"
           className="w-full p-3 mt-1 border border-gray-300 rounded-md"
@@ -1981,6 +1981,7 @@ Blind Docking (auto-box over receptor surface)
     </p>
     <ul className="text-xs text-gray-700 space-y-2 text-left">
       <li>✓ Click <strong>"Generate Docking Script"</strong> to download the script</li>
+      <li>✓ PLease README.txt file in the Zip if you enable Plip</li>
       <li>✓ Run the script anywhere (local machine, another computer, cluster, etc.)</li>
       <li>✓ No need for the local backend - completely portable</li>
       <li>✓ Full control over execution environment</li>

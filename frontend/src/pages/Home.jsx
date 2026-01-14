@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 import moleculeImage1 from "../assets/molecu1le.jpg";
-import TypingEffect from "./TypingEffect"; // Import the new component
+import TypingEffect from "./TypingEffect"; 
 
 export default function Home() {
-  const typingText = "Use 'New Docking' for generating the script or running the  docking on your machine. Use the 'Advanced Analysis' page for analyzing results, such as PLIP, converting, scoring functions or Visualazing.";
+  const typingText = "Use 'New Docking' for generating the script. Use the 'Advanced Analysis' page for analyzing results, such as PLIP, converting, scoring functions or Visualazing.";
 
   return (
     <div className="min-h-screen flex flex-col bg-white-50">

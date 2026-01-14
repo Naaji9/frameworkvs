@@ -374,7 +374,7 @@ const parseDockingPDBQT = (fileContent) => {
   const [dockingData, setDockingData] = useState(null);
   const [showCharges, setShowCharges] = useState(false);
   const [showTorsions, setShowTorsions] = useState(true);
-  const [showScores, setShowScores] = useState(true);
+  const [showScores, setShowScores] = useState(false);
   const [referencePose, setReferencePose] = useState(0);
   
   const viewerRef = useRef(null);
@@ -933,7 +933,7 @@ useEffect(() => {
       const canvas = moleculeViewerRef.current.pngURI();
       const link = document.createElement('a');
       link.href = canvas;
-      link.download = `molecular_view_pose${currentPose + 1}_${Date.now()}.png`;
+      link.download = `molecular_view_pose${currentPose }_${Date.now()}.png`;
       link.click();
     }
   };
@@ -963,7 +963,7 @@ useEffect(() => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-500 transition">
           <label className="flex flex-col items-center cursor-pointer">
-            <div className="text-4xl mb-2">🧬</div>
+            <div className="text-4xl mb-2">➜]</div>
             <span className="text-sm font-medium text-gray-700">Upload Receptor</span>
             <span className="text-xs text-gray-500 mt-1">PDB, PDBQT, CIF</span>
             <input
@@ -982,7 +982,7 @@ useEffect(() => {
 
         <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-500 transition">
           <label className="flex flex-col items-center cursor-pointer">
-            <div className="text-4xl mb-2">💊</div>
+            <div className="text-4xl mb-2">➜]</div>
             <span className="text-sm font-medium text-gray-700">Upload Ligand(s)</span>
             <span className="text-xs text-gray-500 mt-1">Single/multi-model supported</span>
             <input
@@ -1093,7 +1093,7 @@ useEffect(() => {
           {/* Display Options */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <span>👁️</span>
+              <span>👁</span>
               Display
             </h3>
             
@@ -1295,24 +1295,7 @@ useEffect(() => {
                 
 
                 
-                {dockingData.models.length > 1 && (
-                  <div>
-                    <label className="text-xs text-gray-600 block mb-1">
-                      Reference for RMSD
-                    </label>
-                    <select
-                      value={referencePose}
-                      onChange={(e) => setReferencePose(Number(e.target.value))}
-                      className="w-full text-sm border rounded px-2 py-1"
-                    >
-                      {dockingData.models.map((model, idx) => (
-                        <option key={idx} value={idx}>
-                          Pose {idx + 1} ({model.vinaScore ? model.vinaScore.toFixed(2) : 'N/A'} kcal/mol)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+
               </div>
             </div>
           )}

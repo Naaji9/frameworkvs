@@ -506,8 +506,22 @@ OUTPUT_FOLDER = r"{outputFolder}"
 OUTPUT_FORMAT = "{outputFormat}"
 TYPE = "{type}"
 
-# Scientific options
-FLAGS = "{flags_str}"
+# ===========================================
+# Scientific Ligand Preparation Options
+# Generated from ConverterForm
+# ===========================================
+ADD_HYDROGENS = {addHydrogens}
+HYDROGEN_TYPE = "{hydrogenType}"
+MERGE_NONPOLAR_H = {mergeNonPolar}
+DETECT_AROMATIC = {detectAromatic}
+ASSIGN_CHARGES = {assignCharges}
+CHARGE_METHOD = "{chargeMethod}"
+MERGE_LONE_PAIRS = {mergeLonePairs}
+COMPUTE_TORSDOF = {computeTorsdof}
+REMOVE_WATERS = {removeWaters}
+REMOVE_NON_PROTEIN = {removeNonProtein}
+PH_VALUE = {phValue}
+
 
 # Color codes for terminal
 class Colors:
@@ -570,12 +584,24 @@ def run_conversion(input_file, output_file, tools):
     ext = Path(input_file).suffix.lower()
 
     try:
-        # Prefer OpenBabel
+        # =====================================================
+        # 1️⃣ Prefer Open Babel (scientifically explicit)
+        # =====================================================
         if tools.get("obabel"):
             if ext == ".pdbqt":
                 cmd = ["obabel", "-ipdbqt", input_file, "-O", output_file]
             else:
                 cmd = ["obabel", input_file, "-O", output_file]
+
+            # ---- Apply scientific options ----
+            if ADD_HYDROGENS:
+                cmd.append("-h")
+
+            if ASSIGN_CHARGES:
+                cmd.extend(["--partialcharge", CHARGE_METHOD])
+
+            if PH_VALUE is not None:
+                cmd.extend(["-p", str(PH_VALUE)])
 
             result = subprocess.run(
                 cmd,
@@ -587,7 +613,9 @@ def run_conversion(input_file, output_file, tools):
             if result.returncode == 0:
                 return True
 
-        # Ligand → PDBQT fallback
+        # =====================================================
+        # 2️⃣ Ligand → PDBQT fallback (AutoDockTools)
+        # =====================================================
         if (
             TYPE == "ligand"
             and OUTPUT_FORMAT == "pdbqt"
@@ -595,8 +623,25 @@ def run_conversion(input_file, output_file, tools):
             and ext != ".pdbqt"
         ):
             cmd = ["prepare_ligand4.py", "-l", input_file, "-o", output_file]
-            if FLAGS:
-                cmd.extend(FLAGS.split())
+
+            adt_flags = []
+
+            if ADD_HYDROGENS:
+                adt_flags.extend(["-A", "hydrogens"])
+
+            if ASSIGN_CHARGES:
+                adt_flags.append("-C")
+
+            if MERGE_NONPOLAR_H:
+                adt_flags.extend(["-U", "nphs"])
+
+            if MERGE_LONE_PAIRS:
+                adt_flags.extend(["-U", "lps"])
+
+            if COMPUTE_TORSDOF:
+                adt_flags.append("-A")
+
+            cmd.extend(adt_flags)
 
             result = subprocess.run(
                 cmd,
@@ -606,6 +651,9 @@ def run_conversion(input_file, output_file, tools):
             )
             return result.returncode == 0
 
+        # =====================================================
+        # 3️⃣ No valid conversion path
+        # =====================================================
         print(f"{{Colors.RED}}❌ No valid conversion path for {{input_file}}{{Colors.NC}}")
         return False
 
@@ -721,7 +769,6 @@ if __name__ == "__main__":
         if mergeLonePairs:
             cmd_flags.append("-U lps")
         
-        flags_str = " ".join(cmd_flags)
         
         script_content = f'''#!/usr/bin/env python3
 """
@@ -821,12 +868,24 @@ def run_conversion(input_file, output_file, tools):
     ext = Path(input_file).suffix.lower()
 
     try:
-        # 1️⃣ Prefer OpenBabel
+        # =====================================================
+        # 1️⃣ Prefer Open Babel (scientifically explicit)
+        # =====================================================
         if tools.get("obabel"):
             if ext == ".pdbqt":
                 cmd = ["obabel", "-ipdbqt", input_file, "-O", output_file]
             else:
                 cmd = ["obabel", input_file, "-O", output_file]
+
+            # ---- Apply scientific options ----
+            if ADD_HYDROGENS:
+                cmd.append("-h")
+
+            if ASSIGN_CHARGES:
+                cmd.extend(["--partialcharge", CHARGE_METHOD])
+
+            if PH_VALUE is not None:
+                cmd.extend(["-p", str(PH_VALUE)])
 
             result = subprocess.run(
                 cmd,
@@ -837,12 +896,10 @@ def run_conversion(input_file, output_file, tools):
 
             if result.returncode == 0:
                 return True
-            else:
-                print(f"{{Colors.YELLOW}}⚠️  OpenBabel failed, trying fallback...{{Colors.NC}}")
-                if result.stderr:
-                    print(result.stderr.strip())
 
-        # 2️⃣ Ligand → PDBQT fallback
+        # =====================================================
+        # 2️⃣ Ligand → PDBQT fallback (AutoDockTools)
+        # =====================================================
         if (
             TYPE == "ligand"
             and OUTPUT_FORMAT == "pdbqt"
@@ -850,8 +907,25 @@ def run_conversion(input_file, output_file, tools):
             and ext != ".pdbqt"
         ):
             cmd = ["prepare_ligand4.py", "-l", input_file, "-o", output_file]
-            if FLAGS:
-                cmd.extend(FLAGS.split())
+
+            adt_flags = []
+
+            if ADD_HYDROGENS:
+                adt_flags.extend(["-A", "hydrogens"])
+
+            if ASSIGN_CHARGES:
+                adt_flags.append("-C")
+
+            if MERGE_NONPOLAR_H:
+                adt_flags.extend(["-U", "nphs"])
+
+            if MERGE_LONE_PAIRS:
+                adt_flags.extend(["-U", "lps"])
+
+            if COMPUTE_TORSDOF:
+                adt_flags.append("-A")
+
+            cmd.extend(adt_flags)
 
             result = subprocess.run(
                 cmd,
@@ -861,31 +935,14 @@ def run_conversion(input_file, output_file, tools):
             )
             return result.returncode == 0
 
-        # 3️⃣ Receptor → PDBQT fallback
-        if (
-            TYPE == "receptor"
-            and OUTPUT_FORMAT == "pdbqt"
-            and tools.get("prepare_receptor4.py")
-            and ext != ".pdbqt"
-        ):
-            cmd = ["prepare_receptor4.py", "-r", input_file, "-o", output_file]
-            if FLAGS:
-                cmd.extend(FLAGS.split())
-
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            return result.returncode == 0
-
-        print(f"{{Colors.RED}}❌ No valid conversion path for {{input_file}}{{Colors.NC}}")
+        print(f"{Colors.RED}❌ No valid conversion path for {input_file}{Colors.NC}")
         return False
 
     except Exception as e:
-        print(f"{{Colors.RED}}Error: {{e}}{{Colors.NC}}")
+        print(f"{Colors.RED}Error: {e}{Colors.NC}")
         return False
+
+
 
 
 def main():
