@@ -68,7 +68,7 @@ export default function RFLScoreForm() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const SERVER_BACKEND = "http://localhost:8000";
+  const SERVER_BACKEND = "https://backend-strzdw.fly.dev";
 
   // Save output history
   useEffect(() => {

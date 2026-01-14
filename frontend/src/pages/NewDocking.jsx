@@ -97,24 +97,60 @@ const resetBasePath = () => {
 };
 
 
-const validatePathLive = async (path, setter) => {
-  const safePath = normalizeEnteredPath(path);
+// UPDATED: Block invalid characters from being typed (not just clean after)
 
-  try {
-    const res = await axios.get("https://backend-strzdw.fly.dev/validate-path", {
-      params: { path: safePath },
+const validatePathFormat = (path, setter) => {
+  // Empty path
+  if (!path || path.trim() === "") {
+    setter({ 
+      valid: false, 
+      reason: "Path cannot be empty", 
+      bad_part: "" 
     });
-    setter(res.data);
-  } catch {
-    setter({ valid: false, reason: "Backend unreachable", bad_part: "" });
+    return "";
   }
-};
 
-const normalizeEnteredPath = (p) => {
-  if (!p.startsWith("/")) {
-    return "/" + p;
+  let cleanedPath = path.trim();
+
+  // Auto-fix: Add leading '/' if missing
+  if (!cleanedPath.startsWith("/")) {
+    cleanedPath = "/" + cleanedPath;
   }
-  return p;
+
+  // Replace multiple consecutive slashes with single slash
+  cleanedPath = cleanedPath.replace(/\/+/g, "/");
+
+  // Must have at least one directory or file after /
+  const parts = cleanedPath.split('/').filter(p => p.length > 0);
+  
+  if (parts.length === 0) {
+    setter({ 
+      valid: false, 
+      reason: "Path must include directories/files (e.g., /home/user/folder)", 
+      bad_part: "" 
+    });
+    return cleanedPath;
+  }
+
+  // Check for invalid characters
+  const invalidChars = /[@#$%&*()+=<>:"|?*\x00-\x1F,\\]/;
+  if (invalidChars.test(cleanedPath)) {
+    setter({ 
+      valid: false, 
+      reason: "Path contains invalid characters (@#$%&*()+=<>:\"|?*,\\)", 
+      bad_part: cleanedPath.match(invalidChars)[0]
+    });
+    return cleanedPath;
+  }
+
+  // Valid path format
+  setter({ 
+    valid: true, 
+    reason: "", 
+    bad_part: "" 
+  });
+  
+  return cleanedPath;
 };
 
 
@@ -1254,9 +1290,10 @@ const handleGenerateScript = async () => {
       type="text"
       value={ligandPath}
       onChange={(e) => {
-        const p = e.target.value.replace(/\/+/g, "/");
-        setLigandPath(p);
-        validatePathLive(p, setLigandPathStatus);
+        const inputValue = e.target.value;
+        const cleanedValue = inputValue.replace(/[^a-zA-Z0-9/_.\-]/g, "");
+        const correctedPath = validatePathFormat(cleanedValue, setLigandPathStatus);
+        setLigandPath(correctedPath);
       }}
       placeholder="Paste ligand path or use browse below"
       className={`w-full p-3 border rounded-md shadow-sm transition-all ${
@@ -1384,11 +1421,12 @@ const handleGenerateScript = async () => {
       value={receptorPath}
       onChange={(e) => {
         // CLEAN path: remove duplicate slashes
-        const cleaned = e.target.value.replace(/\/+/g, "/");
-        setReceptorPath(cleaned);
+        const inputValue = e.target.value;
+        const cleanedValue = inputValue.replace(/[^a-zA-Z0-9/_.\-]/g, "");
 
         // Live validate
-        validatePathLive(cleaned, setReceptorPathStatus);
+        const correctedPath = validatePathFormat(cleanedValue, setReceptorPathStatus);
+        setReceptorPath(correctedPath);
       }}
       placeholder="Paste receptor path or use browse below"
       className={`w-full p-3 pr-10 border rounded-md shadow-sm 
