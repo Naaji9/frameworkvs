@@ -690,7 +690,7 @@ return (
 
     {/* OUTPUT FOLDER */}
     <section>
-      <label className="font-semibold text-gray-700 text-lg">📂 Output Folder</label>
+      <label className="font-semibold text-gray-700 text-lg">🗁 Output Folder</label>
       <input
         value={outputFolder}
         onChange={(e) => handleOutputFolderChange(e.target.value)}

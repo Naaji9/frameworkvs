@@ -101,7 +101,7 @@ const validatePathLive = async (path, setter) => {
   const safePath = normalizeEnteredPath(path);
 
   try {
-    const res = await axios.get("http://127.0.0.1:8000/validate-path", {
+    const res = await axios.get("https://backend-strzdw.fly.dev/validate-path", {
       params: { path: safePath },
     });
     setter(res.data);
@@ -229,7 +229,7 @@ const handleBlindDockingToggle = async (e) => {
     console.log("Path:", receptorPath);
 
     const res = await axios.post(
-      "http://127.0.0.1:8000/docking/calculate-blind-box",
+      "https://backend-strzdw.fly.dev/docking/calculate-blind-box",
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
@@ -332,7 +332,7 @@ const handleSubmit = async () => {
     const formData = buildFormData();
 
     const response = await axios.post(
-      "http://127.0.0.1:8000/docking/generate-script",
+      "https://backend-strzdw.fly.dev/docking/generate-script",
       formData,
       {
         responseType: "blob",
@@ -569,7 +569,7 @@ const runPlipAnalysis = async (uploadJob) => {
 
   // Generate PLIP script from server backend
   const plipScriptRes = await axios.post(
-    "http://127.0.0.1:8000/plip/generate-script",
+    "https://backend-strzdw.fly.dev/plip/generate-script",
     plipForm,
     { responseType: "text" }
   );
@@ -686,7 +686,7 @@ const handleRun = async () => {
 
     // 2) Ask SERVER backend to generate script TEXT but using backend paths
     const genRes = await axios.post(
-      "http://127.0.0.1:8000/docking/generate-script-text",
+      "https://backend-strzdw.fly.dev/docking/generate-script-text",
       genForm
     );
 
@@ -1116,7 +1116,7 @@ const handleGenerateScript = async () => {
       console.log("📦 Downloading ZIP (vsframework.py + plip_analysis.py)");
       
       const response = await axios.post(
-        "http://127.0.0.1:8000/docking/generate-scripts-zip",
+        "https://backend-strzdw.fly.dev/docking/generate-scripts-zip",
         formData,
         { responseType: "blob" }
       );
@@ -1142,7 +1142,7 @@ const handleGenerateScript = async () => {
       console.log("📄 Downloading single file (vsframework.py only)");
       
       const response = await axios.post(
-        "http://127.0.0.1:8000/docking/generate-script",
+        "https://backend-strzdw.fly.dev/docking/generate-script",
         formData,
         { responseType: "blob" }
       );
