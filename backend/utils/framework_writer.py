@@ -373,7 +373,7 @@ def run_task(task, checkpoint_file, completed):
         progress_counter.value += 1
         percent = int((progress_counter.value / TOTAL_TASKS) * 100)
         with print_lock:
-            print(f"▶ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ▶ ◆︎ ◆︎ Progress: {{progress_counter.value}}/{{TOTAL_TASKS}} ({{percent}}%)")
+            print(f"▶ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎ ◆︎  ◆ ◆ ◆︎ ◆︎ Progress: {{progress_counter.value}}/{{TOTAL_TASKS}} ({{percent}}%)")
 
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)

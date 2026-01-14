@@ -496,7 +496,7 @@ export default function VinaScoringUpload() {
 
             {/* Download Buttons */}
             <div className="bg-white rounded-lg shadow-xl p-6 mb-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">📥 Export Options</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4"> Export Options</h3>
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={downloadCSV}

@@ -317,6 +317,9 @@ return (
           <li>✓ Results include Vina vs ML comparison tables</li>
           <li>✓ Parallel processing for multiple pose files</li>
           <li>✓ Local backend runs on your machine (port 5005)</li>
+           <li> ✓ IF YOU WANT RUN NOW download the local backend from <a href="https://github.com/combilab-furg/local_backend" target="_blank" rel="noopener noreferrer"   
+                   style={{ color: "#1a73e8", textDecoration: "underline" }}> GitHub </a> </li>
+          
         </ul>
       </div>
     </div>
