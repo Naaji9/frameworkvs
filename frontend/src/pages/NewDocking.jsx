@@ -487,6 +487,7 @@ const buildFormData = () => {
   formData.append("output_path", outputFolder || "outputs/vsframework.py");
   formData.append("blind_docking", isBlindDocking);
   // Add PLIP parameters
+if (enablePlip) {
   formData.append("enable_plip", enablePlip);
   formData.append("plip_max_poses", plipMaxPoses);
   formData.append("plip_max_workers", plipMaxWorkers);
@@ -494,6 +495,7 @@ const buildFormData = () => {
   formData.append("plip_remove_ions", plipRemoveIons);
   formData.append("plip_add_hydrogens", plipAddHydrogens);
   formData.append("plip_keep_hetero", plipKeepHetero);
+}
 
 
   return formData;
