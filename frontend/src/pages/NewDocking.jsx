@@ -265,7 +265,7 @@ const handleBlindDockingToggle = async (e) => {
     console.log("Path:", receptorPath);
 
     const res = await axios.post(
-      "https://backend-strzdw.fly.dev/docking/calculate-blind-box",
+      "http://127.0.0.1:8000/docking/calculate-blind-box",
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
@@ -368,7 +368,7 @@ const handleSubmit = async () => {
     const formData = buildFormData();
 
     const response = await axios.post(
-      "https://backend-strzdw.fly.dev/docking/generate-script",
+      "http://127.0.0.1:8000/docking/generate-script",
       formData,
       {
         responseType: "blob",
@@ -487,15 +487,24 @@ const buildFormData = () => {
   formData.append("output_path", outputFolder || "outputs/vsframework.py");
   formData.append("blind_docking", isBlindDocking);
   // Add PLIP parameters
-if (enablePlip) {
-  formData.append("enable_plip", enablePlip);
-  formData.append("plip_max_poses", plipMaxPoses);
-  formData.append("plip_max_workers", plipMaxWorkers);
-  formData.append("plip_remove_waters", plipRemoveWaters);
-  formData.append("plip_remove_ions", plipRemoveIons);
-  formData.append("plip_add_hydrogens", plipAddHydrogens);
-  formData.append("plip_keep_hetero", plipKeepHetero);
-}
+  formData.append("enable_plip", enablePlip ? "true" : "false");  // ← Convert to string!
+  
+  if (enablePlip) {
+    formData.append("plip_max_poses", plipMaxPoses);
+    formData.append("plip_max_workers", plipMaxWorkers);
+    formData.append("plip_remove_waters", plipRemoveWaters ? "true" : "false");
+    formData.append("plip_remove_ions", plipRemoveIons ? "true" : "false");
+    formData.append("plip_add_hydrogens", plipAddHydrogens ? "true" : "false");
+    formData.append("plip_keep_hetero", plipKeepHetero ? "true" : "false");
+  } else {
+    // Send defaults when PLIP is disabled
+    formData.append("plip_max_poses", 5);
+    formData.append("plip_max_workers", 4);
+    formData.append("plip_remove_waters", "false");
+    formData.append("plip_remove_ions", "false");
+    formData.append("plip_add_hydrogens", "true");
+    formData.append("plip_keep_hetero", "true");
+  }
 
 
   return formData;
@@ -607,7 +616,7 @@ const runPlipAnalysis = async (uploadJob) => {
 
   // Generate PLIP script from server backend
   const plipScriptRes = await axios.post(
-    "https://backend-strzdw.fly.dev/plip/generate-script",
+    "http://127.0.0.1:8000/plip/generate-script",
     plipForm,
     { responseType: "text" }
   );
@@ -724,7 +733,7 @@ const handleRun = async () => {
 
     // 2) Ask SERVER backend to generate script TEXT but using backend paths
     const genRes = await axios.post(
-      "https://backend-strzdw.fly.dev/docking/generate-script-text",
+      "http://127.0.0.1:8000/docking/generate-script-text",
       genForm
     );
 
@@ -1154,7 +1163,7 @@ const handleGenerateScript = async () => {
       console.log("📦 Downloading ZIP (vsframework.py + plip_analysis.py)");
       
       const response = await axios.post(
-        "https://backend-strzdw.fly.dev/docking/generate-scripts-zip",
+        "http://127.0.0.1:8000/docking/generate-scripts-zip",
         formData,
         { responseType: "blob" }
       );
@@ -1180,7 +1189,7 @@ const handleGenerateScript = async () => {
       console.log("📄 Downloading single file (vsframework.py only)");
       
       const response = await axios.post(
-        "https://backend-strzdw.fly.dev/docking/generate-script",
+        "http://127.0.0.1:8000/docking/generate-script",
         formData,
         { responseType: "blob" }
       );
@@ -1910,15 +1919,17 @@ Blind Docking (auto-box over receptor surface)
         </label>
         <input
           type="number"
-          min="1"
+          min="0"
           max="20"
           value={plipMaxPoses}
-          onChange={(e) => setPlipMaxPoses(Math.min(20, Math.max(1, parseInt(e.target.value) || 1)))}
+          onChange={(e) => setPlipMaxPoses(Math.min(20, Math.max(0, parseInt(e.target.value) || 0)))}
           className="w-full p-3 border border-gray-300 rounded-md"
         />
-        <p className="text-xs text-gray-500 mt-1">
-          Number of top-scoring poses to analyze per ligand
-        </p>
+
+      <p className="text-xs text-gray-500 mt-1">
+        0 = analyze all poses. Set a value between 1–20 to limit analysis to the
+        top-ranked poses per ligand.
+    </p>
       </div>
 
       {/* Max Workers */}

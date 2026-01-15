@@ -1091,60 +1091,83 @@ def get_all_pdbqt_files(path):
 # ============================================================================
 
 def execute_single_combination(combo, max_poses):
-    """Execute PLIP analysis for a single receptor-ligand combination"""
+    """
+    Execute PLIP analysis for a single receptor-ligand combination.
+
+    max_poses semantics:
+      - 0 or None → analyze ALL poses
+      - N > 0     → analyze first N poses
+    """
     combo_output_dir = combo["output_dir"]
-    
+
+    # Safety: normalize max_poses
+    if max_poses is not None and max_poses < 0:
+        raise ValueError("max_poses must be >= 0 (0 means all poses)")
+
     # Copy original files
     original_files_dir = os.path.join(combo_output_dir, "original_files")
     os.makedirs(original_files_dir, exist_ok=True)
-    
-    receptor_copy = os.path.join(original_files_dir, combo['receptor_name'])
-    ligand_copy = os.path.join(original_files_dir, combo['ligand_name'])
-    
+
+    receptor_copy = os.path.join(original_files_dir, combo["receptor_name"])
+    ligand_copy = os.path.join(original_files_dir, combo["ligand_name"])
+
     shutil.copy2(combo["receptor_path"], receptor_copy)
     shutil.copy2(combo["ligand_path"], ligand_copy)
-    
+
     # Split ligand file into individual poses
     poses_root = os.path.join(combo_output_dir, "poses")
     os.makedirs(poses_root, exist_ok=True)
     all_pose_files = split_pdbqt_models(combo["ligand_path"], poses_root)
-    
+
     total_poses = len(all_pose_files)
-    selected_poses = all_pose_files[:max_poses]
-    
-    print(f"    Total poses in ligand: {{total_poses}}")
-    print(f"    Analyzing first {{len(selected_poses)}} pose(s)")
-    
-    # Remove excess pose files
-    for pose_file in all_pose_files[max_poses:]:
-        try:
-            os.remove(pose_file)
-        except:
-            pass
-    
-    # Process each pose
+
+    # --------------------------------
+    # Pose selection logic
+    # --------------------------------
+    if max_poses in (None, 0):
+        selected_poses = all_pose_files
+        print(f"    Total poses in ligand: {{total_poses}}")
+        print(f"    Analyzing ALL poses ({{total_poses}})")
+    else:
+        selected_poses = all_pose_files[:max_poses]
+        print(f"    Total poses in ligand: {{total_poses}}")
+        print(f"    Analyzing first {{len(selected_poses)}} pose(s)")
+
+        # Remove unused pose files to save disk space
+        for pose_file in all_pose_files[max_poses:]:
+            try:
+                os.remove(pose_file)
+            except Exception:
+                pass
+
+    # --------------------------------
+    # Process selected poses
+    # --------------------------------
     pose_results = []
     for i, pose_file in enumerate(selected_poses, start=1):
-        print(f"\\n    Processing pose {{i}}/{{len(selected_poses)}}...")
+        print(f"\n    Processing pose {{i}}/{{len(selected_poses)}}...")
         pose_dir = os.path.join(combo_output_dir, f"pose_{{i}}")
         os.makedirs(pose_dir, exist_ok=True)
-        
+
         merge_path = os.path.join(pose_dir, f"merge_{{i}}.pdbqt")
         complex_path = os.path.join(pose_dir, "complex.pdb")
-        
+
         # Merge receptor and ligand
         merge_pdbqt(combo["receptor_path"], pose_file, merge_path)
-        
+
         # Convert to PDB format
         safe_run(["obabel", merge_path, "-O", complex_path], cwd=pose_dir)
-        
+
         # Remove SMILES from PDB
-        print(f"      Cleaning SMILES from complex.pdb...")
+        print("      Cleaning SMILES from complex.pdb...")
         remove_smiles_from_pdb(complex_path)
-        
-        # Run PLIP analysis
-        plip_cmd = ["plip", "-f", complex_path, "-x", "-t", "-y", 
-                   "--nohydro", "--nofixfile", "--nofix"]
+
+        # Run PLIP
+        plip_cmd = [
+            "plip", "-f", complex_path, "-x", "-t", "-y",
+            "--nohydro", "--nofixfile", "--nofix"
+        ]
+
         try:
             safe_run(plip_cmd, cwd=pose_dir)
             xml_path = os.path.join(pose_dir, "report.xml")
@@ -1155,23 +1178,22 @@ def execute_single_combination(combo, max_poses):
                 print(f"      ⚠ Pose {{i}}: No XML output")
         except Exception as e:
             print(f"      ✗ Pose {{i}} failed: {{e}}")
-        
-        # Collect output files
+
         files = os.listdir(pose_dir)
         pose_results.append({{
             "pose": i,
             "folder": pose_dir,
-            "csv_files": [f for f in files if f.endswith('.csv')],
-            "json_files": [f for f in files if f.endswith('.json')],
-            "png_files": [f for f in files if f.endswith('.png')],
-            "xml_files": [f for f in files if f.endswith('.xml')],
-            "txt_files": [f for f in files if f.endswith('.txt')],
-            "pse_files": [f for f in files if f.endswith('.pse')],
-            "pml_files": [f for f in files if f.endswith('.pml')],
-            "pdb_files": [f for f in files if f.endswith('.pdb')],
-            "pdbqt_files": [f for f in files if f.endswith('.pdbqt')],
+            "csv_files": [f for f in files if f.endswith(".csv")],
+            "json_files": [f for f in files if f.endswith(".json")],
+            "png_files": [f for f in files if f.endswith(".png")],
+            "xml_files": [f for f in files if f.endswith(".xml")],
+            "txt_files": [f for f in files if f.endswith(".txt")],
+            "pse_files": [f for f in files if f.endswith(".pse")],
+            "pml_files": [f for f in files if f.endswith(".pml")],
+            "pdb_files": [f for f in files if f.endswith(".pdb")],
+            "pdbqt_files": [f for f in files if f.endswith(".pdbqt")],
         }})
-    
+
     return {{
         "combo_name": combo["combo_name"],
         "receptor": combo["receptor_name"],
@@ -1179,8 +1201,9 @@ def execute_single_combination(combo, max_poses):
         "output_dir": combo_output_dir,
         "total_poses_in_file": total_poses,
         "poses_analyzed": len(selected_poses),
-        "poses": pose_results
+        "poses": pose_results,
     }}
+
 
 
 # ============================================================================

@@ -17,14 +17,18 @@ def generate_optimized_docking_script(
     save_path: str = "outputs/vsframework.py",
     return_as_text: bool = False
 ):
+    # ✅ DEBUG: Print what function received
+    print(f"🔍 WRITER DEBUG: enable_plip = {enable_plip} (type: {type(enable_plip)})")
+    
     CHUNK_SIZE = 1000 if chunk_mode == "yes" else 0
 
-    # ✅ CONDITIONAL: Only include PLIP variables if enabled
     plip_globals = ""
     plip_function = ""
     plip_call = ""
     
+    print(f"🔍 WRITER DEBUG: Checking if enable_plip is True...")
     if enable_plip:
+        print(f"🔍 WRITER DEBUG: YES - Adding PLIP code")
         plip_globals = f"""
 ENABLE_PLIP = True
 PLIP_SCRIPT_PATH = "plip_analysis.py"
@@ -485,7 +489,7 @@ def run():
     print("="*60)
 
     extract_scores()
-    {plip_call}
+    {"run_plip_if_enabled()" if enable_plip else ""}
     
 
 

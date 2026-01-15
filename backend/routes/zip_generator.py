@@ -506,7 +506,7 @@ def run_plip_if_enabled():
         print("✅ PLIP COMPLETED!")
         print("="*80)
     except Exception as e:
-        print(f"\\n❌ PLIP failed: {e}")
+        print(f"\\n⚠️ PLIP failed: {e}")
         import traceback
         traceback.print_exc()
 """
@@ -553,28 +553,27 @@ def run_plip_if_enabled():
     
     merged_script = '\n'.join(merged_lines)
     
-    # Add PLIP call in run() function
-    if 'run_plip_if_enabled()' not in merged_script:
-        lines = merged_script.split('\n')
-        new_lines = []
-        in_run = False
-        
-        for line in lines:
-            new_lines.append(line)
-            
-            if line.strip().startswith('def run():'):
-                in_run = True
-            
-            if in_run and 'extract_scores()' in line and not line.strip().startswith('def'):
-                indent = len(line) - len(line.lstrip())
-                new_lines.append(' ' * indent + 'run_plip_if_enabled()')
-                in_run = False
-        
-        merged_script = '\n'.join(new_lines)
+    # FIX: Remove the broken line "def extract_scores()\n    run_plip_if_enabled():"
+    merged_script = re.sub(
+        r'def extract_scores\(\)\s+run_plip_if_enabled\(\):',
+        'def extract_scores():',
+        merged_script
+    )
+    
+    # Insert run_plip_if_enabled() after extract_scores() in the run() function
+    merged_script = merged_script.replace(
+        '    extract_scores()\n    run_plip_if_enabled()',
+        '    extract_scores()'
+    )
+    merged_script = merged_script.replace(
+        '    extract_scores()',
+        '    extract_scores()\n    run_plip_if_enabled()'
+    )
     
     print(f"✅ Merge complete: {len(merged_script)} chars")
     
     return merged_script
+
 
 
 @router.post("/generate-script")
@@ -601,7 +600,7 @@ async def generate_single_script(
     max_workers: int = Form(1),
     output_path: str = Form(...),
     blind_docking: bool = Form(False),
-    enable_plip: bool = Form(False),
+    enable_plip: str = Form(False),
     plip_max_poses: int = Form(5),
     plip_max_workers: int = Form(4),
     plip_remove_waters: bool = Form(False),
@@ -627,7 +626,7 @@ async def generate_single_script(
         vina_cores=vina_cores,
         chunk_mode=chunk_mode,
         output_path=output_path,
-        enable_plip=False,  # Always False - we merge manually
+        enable_plip=enable_plip,
         return_as_text=True
     )
     
@@ -693,15 +692,24 @@ async def generate_scripts_zip(
     max_workers: int = Form(1),
     output_path: str = Form(...),
     blind_docking: bool = Form(False),
-    enable_plip: bool = Form(False),
+    enable_plip: str = Form("false"),
     plip_max_poses: int = Form(5),
     plip_max_workers: int = Form(4),
-    plip_remove_waters: bool = Form(False),
-    plip_remove_ions: bool = Form(False),
-    plip_add_hydrogens: bool = Form(True),
-    plip_keep_hetero: bool = Form(True),
+    plip_remove_waters: str = Form("false"),
+    plip_remove_ions: str = Form("false"),
+    plip_add_hydrogens: str = Form("true"),
+    plip_keep_hetero: str = Form("true"),
 ):
+    # Convert strings to booleans
+    enable_plip_bool = enable_plip.lower() == "true"
+    plip_remove_waters_bool = plip_remove_waters.lower() == "true"
+    plip_remove_ions_bool = plip_remove_ions.lower() == "true"
+    plip_add_hydrogens_bool = plip_add_hydrogens.lower() == "true"
+    plip_keep_hetero_bool = plip_keep_hetero.lower() == "true"
+    
     """Generate ZIP with vsframework.py (+ PLIP if enabled) and README"""
+    print(f"🔍 enable_plip = {enable_plip}")
+    
     
     print(f"🔍 enable_plip = {enable_plip}")
     

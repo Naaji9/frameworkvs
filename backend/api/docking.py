@@ -41,11 +41,15 @@ async def generate_script(
     user_cpu: int = Form(...),
     vina_cores: int = Form(...),
     chunk_mode: str = Form("no"),
-    output_path: str = Form("outputs/vsframework.py")
+    output_path: str = Form("outputs/vsframework.py"),
+    enable_plip: str = Form("false")  # ← ADD THIS
 ):
     try:
         box_step = (box_step_x, box_step_y, box_step_z)
         box_count = (box_count_x, box_count_y, box_count_z)
+        
+        # ← ADD THIS CONVERSION
+        enable_plip_bool = enable_plip.lower() == "true"
 
         # Generate unique temp file
         script_filename = f"vsframework_{uuid.uuid4().hex[:6]}.py"
@@ -65,7 +69,8 @@ async def generate_script(
             vina_cores=vina_cores,
             chunk_mode=chunk_mode,
             output_path=output_path,
-            save_path=save_path
+            save_path=save_path,
+            enable_plip=enable_plip_bool  
         )
 
         return FileResponse(save_path, filename="vsframework.py", media_type="application/octet-stream")
@@ -95,7 +100,14 @@ async def generate_script_text(
     vina_cores: int = Form(...),
     chunk_mode: str = Form("no"),
     output_path: str = Form("outputs"),
+    enable_plip: str = Form("false")  
 ):
+    # ✅ DEBUG: Print what we received
+    print(f"🔍 DEBUG: enable_plip received = '{enable_plip}' (type: {type(enable_plip)})")
+    
+    enable_plip_bool = enable_plip.lower() == "true"
+    print(f"🔍 DEBUG: enable_plip_bool converted = {enable_plip_bool} (type: {type(enable_plip_bool)})")
+    
     # Modify your writer to return text instead of saving
     script_text = generate_optimized_docking_script(
         ligand_folder=ligand_folder,
@@ -110,7 +122,8 @@ async def generate_script_text(
         vina_cores=vina_cores,
         chunk_mode=chunk_mode,
         output_path=output_path,
-        return_as_text=True,   # <<< YOU MUST ADD THIS TO YOUR writer
+        return_as_text=True,
+        enable_plip=enable_plip_bool 
     )
 
     return {"script_text": script_text}

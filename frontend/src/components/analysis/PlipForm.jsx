@@ -1002,45 +1002,66 @@ export default function PlipFormOnline() {
         )}
       </section>
 
-      {/* MAX POSES & WORKERS */}
-      <div className="grid grid-cols-2 gap-4">
-        <section className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border-2 border-blue-300 shadow-md">
-          <label className="font-semibold text-gray-800 text-lg flex items-center gap-2">
-             Max Poses
-          </label>
-          <p className="text-sm text-gray-600 mt-2 mb-3">
-            Poses to analyze per combination
-          </p>
-          <select value={maxPoses} onChange={(e) => setMaxPoses(parseInt(e.target.value))}
-            className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg bg-white font-medium text-lg">
-            {[...Array(20)].map((_, i) => {
-              const num = i + 1;
-              return <option key={num} value={num}>{num}</option>;
-            })}
-          </select>
-        </section>
+{/* MAX POSES & WORKERS */}
+<div className="grid grid-cols-2 gap-4">
+  <section className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border-2 border-blue-300 shadow-md">
+    <label className="font-semibold text-gray-800 text-lg flex items-center gap-2">
+      Max Poses
+    </label>
 
-        <section className="bg-gradient-to-br from-purple-50 to-pink-50 p-5 rounded-xl border-2 border-purple-300 shadow-md">
-          <label className="font-semibold text-gray-800 text-lg flex items-center gap-2">
-             Parallel Workers
-          </label>
-          <p className="text-sm text-gray-600 mt-2 mb-1">
-            Simultaneous analyses (CPU cores)
-          </p>
-          <p className="text-xs text-blue-600 mb-3 font-medium">
-            🖥️ Detected: {detectedCores} cores · Auto-set: {Math.floor(detectedCores / 2)} workers
-          </p>
-          <select value={maxWorkers} onChange={(e) => setMaxWorkers(parseInt(e.target.value))}
-            className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg bg-white font-medium text-lg">
-            {[1,2,4,6,8,12,16].map(num => (
-              <option key={num} value={num}>
-                {num} worker{num > 1 ? 's' : ''} 
-                {num === Math.floor(detectedCores / 2) ? ' (Recommended)' : ''}
-              </option>
-            ))}
-          </select>
-        </section>
-      </div>
+    <p className="text-sm text-gray-600 mt-2 mb-1">
+      Poses to analyze per combination
+    </p>
+
+    <p className="text-xs text-blue-600 mb-3 font-medium">
+      0 = analyze all poses (if unsure)
+    </p>
+
+    <select
+      value={maxPoses}
+      onChange={(e) => setMaxPoses(parseInt(e.target.value))}
+      className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg bg-white font-medium text-lg"
+    >
+      {/* ALL poses option */}
+      <option value={0}>All poses (0)</option>
+
+      {/* Explicit pose limits */}
+      {[...Array(20)].map((_, i) => {
+        const num = i + 1;
+        return (
+          <option key={num} value={num}>
+            {num} pose{num > 1 ? "s" : ""}
+          </option>
+        );
+      })}
+    </select>
+  </section>
+
+  <section className="bg-gradient-to-br from-purple-50 to-pink-50 p-5 rounded-xl border-2 border-purple-300 shadow-md">
+    <label className="font-semibold text-gray-800 text-lg flex items-center gap-2">
+      Parallel Workers
+    </label>
+    <p className="text-sm text-gray-600 mt-2 mb-1">
+      Simultaneous analyses (CPU cores)
+    </p>
+    <p className="text-xs text-blue-600 mb-3 font-medium">
+      🖥️ Detected: {detectedCores} cores · Auto-set: {Math.floor(detectedCores / 2)} workers
+    </p>
+    <select
+      value={maxWorkers}
+      onChange={(e) => setMaxWorkers(parseInt(e.target.value))}
+      className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg bg-white font-medium text-lg"
+    >
+      {[1, 2, 4, 6, 8, 12, 16].map(num => (
+        <option key={num} value={num}>
+          {num} worker{num > 1 ? "s" : ""}
+          {num === Math.floor(detectedCores / 2) ? " (Recommended)" : ""}
+        </option>
+      ))}
+    </select>
+  </section>
+</div>
+
 
       {/* ADVANCED OPTIONS */}
       <section className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-gray-300 overflow-hidden shadow-md">
