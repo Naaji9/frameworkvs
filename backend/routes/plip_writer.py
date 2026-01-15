@@ -330,23 +330,32 @@ def parse_plip_xml(xml_path, output_dir):
             for itype, interactions in interactions_by_type.items():
                 if not interactions:
                     continue
-                filename = f"{{itype.replace(' ', '_')}}.csv"
+                filename = f"{itype.replace(' ', '_')}.csv"
                 with open(os.path.join(output_dir, filename), 'w', newline='', encoding='utf-8') as f:
                     type_keys = sorted(set(k for d in interactions for k in d.keys()))
                     writer = csv.DictWriter(f, fieldnames=type_keys)
                     writer.writeheader()
                     writer.writerows(interactions)
             
+            # Save all interactions to JSON
             with open(os.path.join(output_dir, 'interactions_all.json'), 'w') as f:
                 json.dump(all_interactions, f, indent=2)
+            
+            # Skip specific interaction type JSON files
+            skip_json_types = ['Hydrogen Bonds', 'Hydrophobic Interactions', 'Salt Bridges']
             
             for itype, interactions in interactions_by_type.items():
                 if not interactions:
                     continue
+                
+                # Skip the three specific JSON files
+                if itype in skip_json_types:
+                    continue
+                
                 filename = f"{{itype.replace(' ', '_')}}.json"
                 with open(os.path.join(output_dir, filename), 'w') as f:
                     json.dump(interactions, f, indent=2)
-            
+                    
             summary_path = os.path.join(output_dir, 'interaction_summary.csv')
             counts = {{}}
             for i in all_interactions:
