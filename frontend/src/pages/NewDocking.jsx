@@ -1223,7 +1223,7 @@ const handleGenerateScript = async () => {
     <>
 {showBasePathModal && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black-0.2">
-    <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+    <div className="bg-blue-200 rounded-lg p-6 w-full max-w-md shadow-xl">
 
       <h3 className="text-xl font-bold mb-4 text-blue-700">📘 Path Usage Information</h3>
 
