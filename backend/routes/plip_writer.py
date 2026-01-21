@@ -1513,10 +1513,12 @@ def main():
         total = existing_checkpoint.get('total_combinations', 0)
         completed = len(existing_checkpoint.get('completed_combinations', []))
         failed = len(existing_checkpoint.get('failed_combinations', []))
-        
+    
         print("\\n" + "="*80)
-        print("🗁 INCOMPLETE JOB DETECTED - AUTO-RESUMING")
-        print("="*80)
+        if existing_checkpoint.get('status') == 'completed':
+            print("🗁  EXISTING COMPLETED JOB FOUND - CHECKING FOR UPDATES")
+        else:
+            print("🗁  INCOMPLETE JOB DETECTED - AUTO-RESUMING")
         print(f"  Job: {{os.path.basename(existing_job_dir)}}")
         print(f"  Total combinations: {{total}}")
         print(f"  ✓ Completed: {{completed}}")

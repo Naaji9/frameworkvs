@@ -463,7 +463,14 @@ ENABLE_PLIP = True
 PLIP_MAX_POSES = {plip_max_poses}
 PLIP_MAX_WORKERS = {plip_max_workers}
 """
-    
+    timing_globals = """
+
+# Timing trackers
+DOCKING_START_TIME = None
+DOCKING_END_TIME = None
+PLIP_START_TIME = None
+PLIP_END_TIME = None
+"""    
     # PLIP runner (uses docking paths)
     plip_runner = """
 
@@ -473,16 +480,20 @@ PLIP_MAX_WORKERS = {plip_max_workers}
 
 def run_plip_if_enabled():
     \"\"\"Run PLIP using docking paths\"\"\"
+    global PLIP_START_TIME, PLIP_END_TIME, DOCKING_START_TIME, DOCKING_END_TIME
+    
     if not ENABLE_PLIP:
         return
     
+    PLIP_START_TIME = time.time()
+     
     # Use docking paths
     plip_receptor = receptor_folder
     plip_ligand = output_path
     plip_output = os.path.join(os.path.dirname(output_path.rstrip('/')), 'plip_analysis')
     
     print("\\n" + "="*80)
-    print("🔬 DOCKING COMPLETE - STARTING PLIP")
+    print(" DOCKING COMPLETED - STARTING PLIP")
     print("="*80)
     print(f"Receptor: {plip_receptor}")
     print(f"Ligand: {plip_ligand}")
@@ -502,8 +513,20 @@ def run_plip_if_enabled():
         
         run_plip_analysis()
         
+        
+        PLIP_END_TIME = time.time()
+        
+        # Calculate times
+        docking_time = DOCKING_END_TIME - DOCKING_START_TIME if DOCKING_START_TIME and DOCKING_END_TIME else 0
+        plip_time = PLIP_END_TIME - PLIP_START_TIME if PLIP_START_TIME and PLIP_END_TIME else 0
+        total_time = docking_time + plip_time
+        
         print("\\n" + "="*80)
-        print("✅ PLIP COMPLETED!")
+        print("✓ PLIP COMPLETED!")
+        print("="*80)
+        print(f"⏱  Docking Time: {docking_time:.2f}s ({docking_time/60:.2f} min)")
+        print(f"⏱  PLIP Time: {plip_time:.2f}s ({plip_time/60:.2f} min)")
+        print(f"⏱  Total Time (Docking + PLIP): {total_time:.2f}s ({total_time/60:.2f} min)")
         print("="*80)
     except Exception as e:
         print(f"\\n⚠️ PLIP failed: {e}")
@@ -534,7 +557,7 @@ def run_plip_if_enabled():
     if 'os.makedirs(output_path, exist_ok=True)' in merged_temp:
         merged_temp = merged_temp.replace(
             'os.makedirs(output_path, exist_ok=True)',
-            'os.makedirs(output_path, exist_ok=True)' + plip_config
+            'os.makedirs(output_path, exist_ok=True)' + plip_config + timing_globals
         )
     merged_lines = merged_temp.split('\n')
     
@@ -546,6 +569,25 @@ def run_plip_if_enabled():
     merged_lines.append(plip_functions)
     merged_lines.append(plip_runner)
     merged_lines.append('\n')
+    
+    # Inject timing code into run() function
+    merged_script_lines = '\n'.join(merged_lines)
+    
+    # Add timing start to run() function
+    merged_script_lines = merged_script_lines.replace(
+        'def run():\n    global TOTAL_TASKS, failed_counter',
+        'def run():\n    global TOTAL_TASKS, failed_counter, DOCKING_START_TIME, DOCKING_END_TIME\n    DOCKING_START_TIME = time.time()'
+    )
+    
+    # Add timing end after docking
+    merged_script_lines = merged_script_lines.replace(
+        '    dur = time.time() - overall_start',
+        '    dur = time.time() - overall_start\n    DOCKING_END_TIME = time.time()'
+    )
+    
+    merged_lines = merged_script_lines.split('\n')
+    
+    # Part 3: Add if __name__
     
     # Part 3: Add if __name__
     if main_idx:
