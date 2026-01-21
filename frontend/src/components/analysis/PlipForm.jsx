@@ -945,7 +945,7 @@ export default function PlipFormOnline() {
 
           {/* LIGAND PATH INPUT */}
           <section className="space-y-2" ref={ligandPathInputRef}>
-            <label className="font-semibold text-gray-700 text-lg"> Ligand Path</label>
+            <label className="font-semibold text-gray-700 text-lg"> Ligand Path (docked ligand or docking output)</label>
             <input
               value={ligandPath}
               onChange={(e) => handleLigandPathChange(e.target.value)}
@@ -1146,7 +1146,7 @@ export default function PlipFormOnline() {
       ? "🔄 Processing..." 
       : executionMode === "generate"
       ? " 📜​​ Generate Standalone Script"
-      : "▶️ Run PLIP Analysis"}
+      : " Run PLIP Analysis"}
   </button>
 
   {isWorking && executionMode === "run" && (

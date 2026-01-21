@@ -330,7 +330,7 @@ def parse_plip_xml(xml_path, output_dir):
             for itype, interactions in interactions_by_type.items():
                 if not interactions:
                     continue
-                filename = f"{itype.replace(' ', '_')}.csv"
+                filename = f"{{{{itype.replace(' ', '_')}}}}.csv"
                 with open(os.path.join(output_dir, filename), 'w', newline='', encoding='utf-8') as f:
                     type_keys = sorted(set(k for d in interactions for k in d.keys()))
                     writer = csv.DictWriter(f, fieldnames=type_keys)
@@ -352,10 +352,10 @@ def parse_plip_xml(xml_path, output_dir):
                 if itype in skip_json_types:
                     continue
                 
-                filename = f"{{itype.replace(' ', '_')}}.json"
+                filename = f"{{{{itype.replace(' ', '_')}}}}.json"
                 with open(os.path.join(output_dir, filename), 'w') as f:
                     json.dump(interactions, f, indent=2)
-                    
+
             summary_path = os.path.join(output_dir, 'interaction_summary.csv')
             counts = {{}}
             for i in all_interactions:
@@ -371,6 +371,156 @@ def parse_plip_xml(xml_path, output_dir):
     except Exception as e:
         print(f"    ⚠ Error parsing XML: {{e}}")
         return False
+
+
+
+# ============================================================================
+# CHECKPOINT SYSTEM
+# ============================================================================
+
+def create_master_checkpoint(job_dir, job_id, total_combinations):
+    """Create initial master checkpoint file"""
+    checkpoint = {{
+        "job_id": job_id,
+        "status": "in_progress",
+        "total_combinations": total_combinations,
+        "completed_combinations": [],
+        "failed_combinations": [],
+        "in_progress_combination": None,
+        "start_time": time.time(),
+        "last_update": time.time()
+    }}
+    checkpoint_path = os.path.join(job_dir, "checkpoint.json")
+    
+    # Atomic write
+    temp_path = checkpoint_path + ".tmp"
+    with open(temp_path, 'w') as f:
+        json.dump(checkpoint, f, indent=2)
+    shutil.move(temp_path, checkpoint_path)
+    
+    return checkpoint_path
+
+
+def load_master_checkpoint(job_dir):
+    """Load existing master checkpoint"""
+    checkpoint_path = os.path.join(job_dir, "checkpoint.json")
+    if not os.path.exists(checkpoint_path):
+        return None
+    
+    try:
+        with open(checkpoint_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"âš ï¸  Warning: Could not load checkpoint: {{e}}")
+        return None
+
+
+def update_master_checkpoint(job_dir, updates):
+    """Update master checkpoint with new information"""
+    checkpoint_path = os.path.join(job_dir, "checkpoint.json")
+    
+    # Load current checkpoint
+    if os.path.exists(checkpoint_path):
+        with open(checkpoint_path, 'r') as f:
+            checkpoint = json.load(f)
+    else:
+        checkpoint = {{}}
+    
+    # Apply updates
+    checkpoint.update(updates)
+    checkpoint["last_update"] = time.time()
+    
+    # Atomic write
+    temp_path = checkpoint_path + ".tmp"
+    with open(temp_path, 'w') as f:
+        json.dump(checkpoint, f, indent=2)
+    shutil.move(temp_path, checkpoint_path)
+
+
+def create_combination_checkpoint(combo_dir, combo_name, total_poses):
+    """Create checkpoint for a single combination"""
+    checkpoint = {{
+        "combination_name": combo_name,
+        "status": "in_progress",
+        "total_poses": total_poses,
+        "completed_poses": [],
+        "failed_poses": [],
+        "start_time": time.time(),
+        "last_update": time.time()
+    }}
+    checkpoint_path = os.path.join(combo_dir, "pose_checkpoint.json")
+    
+    temp_path = checkpoint_path + ".tmp"
+    with open(temp_path, 'w') as f:
+        json.dump(checkpoint, f, indent=2)
+    shutil.move(temp_path, checkpoint_path)
+    
+    return checkpoint_path
+
+
+def load_combination_checkpoint(combo_dir):
+    """Load checkpoint for a combination"""
+    checkpoint_path = os.path.join(combo_dir, "pose_checkpoint.json")
+    if not os.path.exists(checkpoint_path):
+        return None
+    
+    try:
+        with open(checkpoint_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"    âš ï¸  Warning: Could not load combination checkpoint: {{e}}")
+        return None
+
+
+def update_combination_checkpoint(combo_dir, updates):
+    """Update combination checkpoint"""
+    checkpoint_path = os.path.join(combo_dir, "pose_checkpoint.json")
+    
+    if os.path.exists(checkpoint_path):
+        with open(checkpoint_path, 'r') as f:
+            checkpoint = json.load(f)
+    else:
+        checkpoint = {{}}
+    
+    checkpoint.update(updates)
+    checkpoint["last_update"] = time.time()
+    
+    temp_path = checkpoint_path + ".tmp"
+    with open(temp_path, 'w') as f:
+        json.dump(checkpoint, f, indent=2)
+    shutil.move(temp_path, checkpoint_path)
+
+
+def validate_checkpoint(job_dir, checkpoint_data):
+    """Validate that checkpoint matches actual files on disk"""
+    valid = True
+    issues = []
+    
+    for combo_name in checkpoint_data.get("completed_combinations", []):
+        combo_dir = os.path.join(job_dir, combo_name)
+        if not os.path.exists(combo_dir):
+            valid = False
+            issues.append(f"Missing completed combination directory: {{combo_name}}")
+    
+    return valid, issues
+
+
+def is_combination_complete(combo_dir):
+    """Check if a combination has been fully processed"""
+    checkpoint = load_combination_checkpoint(combo_dir)
+    if not checkpoint:
+        return False
+    
+    return checkpoint.get("status") == "completed"
+
+
+def get_completed_poses(combo_dir):
+    """Get list of completed pose numbers for a combination"""
+    checkpoint = load_combination_checkpoint(combo_dir)
+    if not checkpoint:
+        return []
+    
+    return checkpoint.get("completed_poses", [])        
 
 def aggregate_plip_results_v2(job_dir):
     """
@@ -1101,17 +1251,36 @@ def get_all_pdbqt_files(path):
 
 def execute_single_combination(combo, max_poses):
     """
-    Execute PLIP analysis for a single receptor-ligand combination.
+    Execute PLIP analysis for a single receptor-ligand combination WITH CHECKPOINTS.
 
     max_poses semantics:
       - 0 or None → analyze ALL poses
       - N > 0     → analyze first N poses
     """
     combo_output_dir = combo["output_dir"]
+    combo_name = combo["combo_name"]
 
     # Safety: normalize max_poses
     if max_poses is not None and max_poses < 0:
         raise ValueError("max_poses must be >= 0 (0 means all poses)")
+
+    # ========================================================================
+    # CHECKPOINT: Check if combination already completed
+    # ========================================================================
+    if is_combination_complete(combo_output_dir):
+        print(f"    ✓ Combination already completed (from checkpoint), skipping...")
+        existing_checkpoint = load_combination_checkpoint(combo_output_dir)
+        return {{
+            "combo_name": combo_name,
+            "receptor": combo["receptor_name"],
+            "ligand": combo["ligand_name"],
+            "output_dir": combo_output_dir,
+            "total_poses_in_file": existing_checkpoint.get("total_poses", 0),
+            "poses_analyzed": len(existing_checkpoint.get("completed_poses", [])),
+            "poses": [],
+            "resumed_from_checkpoint": True,
+            "status": "completed"
+        }}
 
     # Copy original files
     original_files_dir = os.path.join(combo_output_dir, "original_files")
@@ -1120,8 +1289,10 @@ def execute_single_combination(combo, max_poses):
     receptor_copy = os.path.join(original_files_dir, combo["receptor_name"])
     ligand_copy = os.path.join(original_files_dir, combo["ligand_name"])
 
-    shutil.copy2(combo["receptor_path"], receptor_copy)
-    shutil.copy2(combo["ligand_path"], ligand_copy)
+    if not os.path.exists(receptor_copy):
+        shutil.copy2(combo["receptor_path"], receptor_copy)
+    if not os.path.exists(ligand_copy):
+        shutil.copy2(combo["ligand_path"], ligand_copy)
 
     # Split ligand file into individual poses
     poses_root = os.path.join(combo_output_dir, "poses")
@@ -1129,6 +1300,19 @@ def execute_single_combination(combo, max_poses):
     all_pose_files = split_pdbqt_models(combo["ligand_path"], poses_root)
 
     total_poses = len(all_pose_files)
+
+    # ========================================================================
+    # CHECKPOINT: Load existing progress or create new checkpoint
+    # ========================================================================
+    existing_checkpoint = load_combination_checkpoint(combo_output_dir)
+    
+    if existing_checkpoint:
+        completed_poses = existing_checkpoint.get("completed_poses", [])
+        print(f"    🗁 Resuming from checkpoint: {{len(completed_poses)}}/{{total_poses}} poses already completed")
+    else:
+        completed_poses = []
+        create_combination_checkpoint(combo_output_dir, combo_name, total_poses)
+        print(f"  Created new checkpoint for combination")
 
     # --------------------------------
     # Pose selection logic
@@ -1150,43 +1334,83 @@ def execute_single_combination(combo, max_poses):
                 pass
 
     # --------------------------------
-    # Process selected poses
+    # Process selected poses (skip already completed)
     # --------------------------------
     pose_results = []
-    for i, pose_file in enumerate(selected_poses, start=1):
-        print(f"\n    Processing pose {{i}}/{{len(selected_poses)}}...")
+    poses_to_process = [i for i in range(1, len(selected_poses) + 1) if i not in completed_poses]
+    
+    if not poses_to_process:
+        print(f"    ✓ All poses already completed!")
+    else:
+        print(f"    Processing {{len(poses_to_process)}} remaining pose(s)...")
+
+    for i in range(1, len(selected_poses) + 1):
+        # ====================================================================
+        # CHECKPOINT: Skip if pose already completed
+        # ====================================================================
+        if i in completed_poses:
+            print(f"\\n    Pose {{i}}/{{len(selected_poses)}}: ✓ Already completed (skipping)")
+            continue
+
+        pose_file = selected_poses[i - 1]
+        print(f"\\n    Processing pose {{i}}/{{len(selected_poses)}}...")
         pose_dir = os.path.join(combo_output_dir, f"pose_{{i}}")
         os.makedirs(pose_dir, exist_ok=True)
 
         merge_path = os.path.join(pose_dir, f"merge_{{i}}.pdbqt")
         complex_path = os.path.join(pose_dir, "complex.pdb")
 
-        # Merge receptor and ligand
-        merge_pdbqt(combo["receptor_path"], pose_file, merge_path)
-
-        # Convert to PDB format
-        safe_run(["obabel", merge_path, "-O", complex_path], cwd=pose_dir)
-
-        # Remove SMILES from PDB
-        print("      Cleaning SMILES from complex.pdb...")
-        remove_smiles_from_pdb(complex_path)
-
-        # Run PLIP
-        plip_cmd = [
-            "plip", "-f", complex_path, "-x", "-t", "-y",
-            "--nohydro", "--nofixfile", "--nofix"
-        ]
-
         try:
+            # Merge receptor and ligand
+            merge_pdbqt(combo["receptor_path"], pose_file, merge_path)
+
+            # Convert to PDB format
+            safe_run(["obabel", merge_path, "-O", complex_path], cwd=pose_dir)
+
+            # Remove SMILES from PDB
+            print("      Cleaning SMILES from complex.pdb...")
+            remove_smiles_from_pdb(complex_path)
+
+            # Run PLIP
+            plip_cmd = [
+                "plip", "-f", complex_path, "-x", "-t", "-y",
+                "--nohydro", "--nofixfile", "--nofix"
+            ]
+
             safe_run(plip_cmd, cwd=pose_dir)
             xml_path = os.path.join(pose_dir, "report.xml")
+            
             if os.path.exists(xml_path):
                 parse_plip_xml(xml_path, pose_dir)
                 print(f"      ✓ Pose {{i}} completed")
+                
+                # ============================================================
+                # CHECKPOINT: Mark pose as completed
+                # ============================================================
+                update_combination_checkpoint(combo_output_dir, {{
+                    "completed_poses": completed_poses + [i]
+                }})
+                completed_poses.append(i)
+                
             else:
                 print(f"      ⚠ Pose {{i}}: No XML output")
+                
+                # Mark as failed in checkpoint
+                existing_checkpoint = load_combination_checkpoint(combo_output_dir)
+                failed = existing_checkpoint.get("failed_poses", [])
+                update_combination_checkpoint(combo_output_dir, {{
+                    "failed_poses": failed + [i]
+                }})
+
         except Exception as e:
             print(f"      ✗ Pose {{i}} failed: {{e}}")
+            
+            # Mark as failed in checkpoint
+            existing_checkpoint = load_combination_checkpoint(combo_output_dir)
+            failed = existing_checkpoint.get("failed_poses", [])
+            update_combination_checkpoint(combo_output_dir, {{
+                "failed_poses": failed + [i]
+            }})
 
         files = os.listdir(pose_dir)
         pose_results.append({{
@@ -1203,14 +1427,24 @@ def execute_single_combination(combo, max_poses):
             "pdbqt_files": [f for f in files if f.endswith(".pdbqt")],
         }})
 
+    # ========================================================================
+    # CHECKPOINT: Mark entire combination as completed
+    # ========================================================================
+    update_combination_checkpoint(combo_output_dir, {{
+        "status": "completed",
+        "completion_time": time.time()
+    }})
+
     return {{
-        "combo_name": combo["combo_name"],
+        "combo_name": combo_name,
         "receptor": combo["receptor_name"],
         "ligand": combo["ligand_name"],
         "output_dir": combo_output_dir,
         "total_poses_in_file": total_poses,
         "poses_analyzed": len(selected_poses),
         "poses": pose_results,
+        "resumed_from_checkpoint": len(completed_poses) > 0,
+        "status": "completed"
     }}
 
 
@@ -1223,7 +1457,7 @@ def main():
     print("\\n" + "="*80)
     print(" PLIP ANALYSIS - STANDALONE SCRIPT")
     print("="*80)
-    print("GENERATED BY: COMBI VS  FRAMEWORK 3.0")
+    print("GENERATED BY: COMBI VS FRAMEWORK 3.0")
     print("="*80)
     
     # Check dependencies first
@@ -1231,7 +1465,7 @@ def main():
     
     # Validate paths
     print("\\n" + "="*80)
-    print(" VALIDATING PATHS")
+    print("🗁 VALIDATING PATHS")
     print("="*80)
     
     if not os.path.exists(RECEPTOR_PATH):
@@ -1249,110 +1483,237 @@ def main():
     print(f"  ✓ Output: {{OUTPUT_FOLDER}}")
     print("="*80)
     
-    # Display configuration
-    print("\\n" + "="*80)
-    print("  CONFIGURATION")
-    print("="*80)
-    print(f"  Max poses per combination: {{MAX_POSES}}")
-    print(f"  Parallel workers: {{MAX_WORKERS}}")
-    print(f"  Remove waters: {{REMOVE_WATERS}}")
-    print(f"  Remove ions: {{REMOVE_IONS}}")
-    print(f"  Add hydrogens: {{ADD_HYDROGENS}}")
-    print(f"  Keep heteroatoms: {{KEEP_HETERO}}")
-    print("="*80)
+    # ========================================================================
+    # CHECKPOINT: Auto-detect existing incomplete jobs
+    # ========================================================================
+    existing_job_dir = None
+    existing_checkpoint = None
     
-    # Get receptor and ligand files
-    # Get all PDB/PDBQT files recursively
-    print("\\n" + "="*80)
-    print(" SCANNING FILES RECURSIVELY")
-    print("="*80)
+    # Look for existing plip_job_* folders
+    if os.path.exists(OUTPUT_FOLDER):
+        job_folders = [f for f in os.listdir(OUTPUT_FOLDER) 
+                      if f.startswith("plip_job_") and 
+                      os.path.isdir(os.path.join(OUTPUT_FOLDER, f))]
+        
+        # Find most recent incomplete job
+        for job_folder in sorted(job_folders, reverse=True):
+            job_path = os.path.join(OUTPUT_FOLDER, job_folder)
+            checkpoint = load_master_checkpoint(job_path)
     
-    # Combine both paths for searching
-    search_paths = set()
-    if os.path.exists(RECEPTOR_PATH):
-        search_paths.add(os.path.abspath(RECEPTOR_PATH))
-    if os.path.exists(LIGAND_PATH):
-        search_paths.add(os.path.abspath(LIGAND_PATH))
+            if checkpoint:  # Accept ANY job
+                existing_job_dir = job_path
+                existing_checkpoint = checkpoint
+                break
     
-    all_files = []
-    for path in search_paths:
-        files = get_all_pdbqt_files(path)
-        all_files.extend(files)
+    # ========================================================================
+    # If incomplete job found, auto-resume it
+    # ========================================================================
+    if existing_job_dir and existing_checkpoint:
+        job_id = existing_checkpoint.get('job_id', 'unknown')
+        total = existing_checkpoint.get('total_combinations', 0)
+        completed = len(existing_checkpoint.get('completed_combinations', []))
+        failed = len(existing_checkpoint.get('failed_combinations', []))
+        
+        print("\\n" + "="*80)
+        print("🗁 INCOMPLETE JOB DETECTED - AUTO-RESUMING")
+        print("="*80)
+        print(f"  Job: {{os.path.basename(existing_job_dir)}}")
+        print(f"  Total combinations: {{total}}")
+        print(f"  ✓ Completed: {{completed}}")
+        print(f"  ✖ Failed: {{failed}}")
+        print(f"  ⇄ Remaining: {{total - completed - failed}}")
+        print("="*80)
+        
+        job_dir = existing_job_dir
+        
+        # Reconstruct combinations from existing job
+        matched_combinations = []
+        for combo_name in os.listdir(job_dir):
+            combo_path = os.path.join(job_dir, combo_name)
+            if not os.path.isdir(combo_path):
+                continue
+            if combo_name in ["checkpoint.json", "combinations_summary.json", "final_results.json"]:
+                continue
+            
+            # Look for original files
+            original_files_dir = os.path.join(combo_path, "original_files")
+            if not os.path.exists(original_files_dir):
+                continue
+            
+            receptor_file = None
+            ligand_file = None
+            receptor_name = None
+            ligand_name = None
+            
+            for f in os.listdir(original_files_dir):
+                if f.endswith(('.pdb', '.pdbqt')):
+                    full_path = os.path.join(original_files_dir, f)
+                    # Heuristic: ligand files have more complex naming
+                    if f.count('_') >= 2 or '-' in f:
+                        ligand_file = full_path
+                        ligand_name = f
+                    else:
+                        receptor_file = full_path
+                        receptor_name = f
+            
+            if receptor_file and ligand_file:
+                matched_combinations.append({{
+                    "receptor_path": receptor_file,
+                    "receptor_name": receptor_name,
+                    "ligand_path": ligand_file,
+                    "ligand_name": ligand_name,
+                    "matched_identifier": combo_name.split('_')[0],
+                    "output_dir": combo_path,
+                    "combo_name": combo_name
+                }})
+        
+        print(f"\\n✓ Reconstructed {{len(matched_combinations)}} combinations\\n")
     
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_files = []
-    for f in all_files:
-        if f not in seen:
-            seen.add(f)
-            unique_files.append(f)
-    all_files = unique_files
+    # ========================================================================
+    # Otherwise, start fresh
+    # ========================================================================
+    else:
+        # Display configuration
+        print("\\n" + "="*80)
+        print(" ⚙ CONFIGURATION")
+        print("="*80)
+        print(f"  Max poses per combination: {{MAX_POSES if MAX_POSES > 0 else 'ALL'}}")
+        print(f"  Parallel workers: {{MAX_WORKERS}}")
+        print(f"  Remove waters: {{REMOVE_WATERS}}")
+        print(f"  Remove ions: {{REMOVE_IONS}}")
+        print(f"  Add hydrogens: {{ADD_HYDROGENS}}")
+        print(f"  Keep heteroatoms: {{KEEP_HETERO}}")
+        print("="*80)
+        
+        # Scan files
+        print("\\n" + "="*80)
+        print(" SCANNING FILES RECURSIVELY")
+        print("="*80)
+        
+        search_paths = set()
+        if os.path.exists(RECEPTOR_PATH):
+            search_paths.add(os.path.abspath(RECEPTOR_PATH))
+        if os.path.exists(LIGAND_PATH):
+            search_paths.add(os.path.abspath(LIGAND_PATH))
+        
+        all_files = []
+        for path in search_paths:
+            files = get_all_pdbqt_files(path)
+            all_files.extend(files)
+        
+        # Remove duplicates
+        seen = set()
+        unique_files = []
+        for f in all_files:
+            if f not in seen:
+                seen.add(f)
+                unique_files.append(f)
+        all_files = unique_files
+        
+        if not all_files:
+            print("✖️ No PDB/PDBQT files found")
+            sys.exit(1)
+        
+        # Separate receptors and ligands
+        receptor_files, ligand_files = separate_receptors_and_ligands(all_files)
+        
+        print(f"  Receptors found: {{len(receptor_files)}}")
+        for r in receptor_files[:5]:
+            print(f"    - {{os.path.basename(r)}}")
+        if len(receptor_files) > 5:
+            print(f"    ... and {{len(receptor_files) - 5}} more")
+        
+        print(f"  Ligands found: {{len(ligand_files)}}")
+        for l in ligand_files[:5]:
+            print(f"    - {{os.path.basename(l)}}")
+        if len(ligand_files) > 5:
+            print(f"    ... and {{len(ligand_files) - 5}} more")
+        
+        print("="*80)
+        
+        if not receptor_files or not ligand_files:
+            print("✖️ No receptor or ligand files found")
+            sys.exit(1)
+        
+        # Match receptors with ligands
+        matched_combinations = match_receptors_to_ligands(receptor_files, ligand_files)
+        
+        if not matched_combinations:
+            print("✖️ No matching receptor-ligand pairs found!")
+            sys.exit(1)
+        
+        # Create job directory
+        job_id = os.urandom(4).hex()
+        job_dir = os.path.join(OUTPUT_FOLDER, f"plip_job_{{job_id}}")
+        os.makedirs(job_dir, exist_ok=True)
+        
+        print(f"\\n🗁 Job directory created: {{job_dir}}")
+        
+        # Create master checkpoint
+        checkpoint_path = create_master_checkpoint(job_dir, job_id, len(matched_combinations))
+        print(f"✓ Master checkpoint created\\n")
+        
+        # Save matching summary
+        summary_path = os.path.join(job_dir, "combinations_summary.json")
+        with open(summary_path, 'w') as f:
+            json.dump({{
+                "total_combinations": len(matched_combinations),
+                "combinations": [
+                    {{
+                        "receptor": c["receptor_name"],
+                        "ligand": c["ligand_name"],
+                        "matched_identifier": c["matched_identifier"]
+                    }}
+                    for c in matched_combinations
+                ]
+            }}, f, indent=2)
+        print(f"✓ Saved combinations summary\\n")
+        
+        # Prepare output directories
+        for combo in matched_combinations:
+            combo_name = f"{{combo['receptor_name'].replace('.pdbqt', '').replace('.pdb', '')}}_{{combo['ligand_name'].replace('.pdbqt', '').replace('.pdb', '')}}"
+            combo_dir = os.path.join(job_dir, combo_name)
+            os.makedirs(combo_dir, exist_ok=True)
+            combo["output_dir"] = combo_dir
+            combo["combo_name"] = combo_name
     
-    if not all_files:
-        print("✖️ No PDB/PDBQT files found")
-        sys.exit(1)
+    # ========================================================================
+    # Filter completed combinations
+    # ========================================================================
+    master_checkpoint = load_master_checkpoint(job_dir)
+    completed_combos = master_checkpoint.get("completed_combinations", []) if master_checkpoint else []
     
-    # Intelligently separate receptors from ligands
-    receptor_files, ligand_files = separate_receptors_and_ligands(all_files)
+    combinations_to_process = []
+    skipped_count = 0
     
-    print(f"  Receptors found: {{len(receptor_files)}}")
-    for r in receptor_files:
-        print(f"    - {{os.path.basename(r)}}")
-    
-    print(f"  Ligands found: {{len(ligand_files)}}")
-    for l in ligand_files:
-        print(f"    - {{os.path.basename(l)}}")
-    
-    print("="*80)
-    
-    if not receptor_files:
-        print("✖️ No receptor files found")
-        sys.exit(1)
-    if not ligand_files:
-        print("✖️ No ligand files found")
-        sys.exit(1)
-    
-    # Match receptors with ligands
-    matched_combinations = match_receptors_to_ligands(receptor_files, ligand_files)
-    
-    if not matched_combinations:
-        print("✖️ No matching receptor-ligand pairs found!")
-        print("   Ensure ligands are named like: {{receptor_prefix}}_{{compound}}_{{score}}.pdbqt")
-        sys.exit(1)
-    
-    # Create job directory
-    job_id = os.urandom(4).hex()
-    job_dir = os.path.join(OUTPUT_FOLDER, f"plip_job_{{job_id}}")
-    os.makedirs(job_dir, exist_ok=True)
-    
-    print(f"\\n Job directory created: {{job_dir}}")
-    
-    # Save matching summary
-    summary_path = os.path.join(job_dir, "combinations_summary.json")
-    with open(summary_path, 'w') as f:
-        json.dump({{
-            "total_combinations": len(matched_combinations),
-            "combinations": [
-                {{
-                    "receptor": c["receptor_name"],
-                    "ligand": c["ligand_name"],
-                    "matched_identifier": c["matched_identifier"]
-                }}
-                for c in matched_combinations
-            ]
-        }}, f, indent=2)
-    print(f"✓ Saved combinations summary: {{summary_path}}\\n")
-    
-    # Prepare output directories for each combination
     for combo in matched_combinations:
-        combo_name = f"{{combo['receptor_name'].replace('.pdbqt', '').replace('.pdb', '')}}_{{combo['ligand_name'].replace('.pdbqt', '').replace('.pdb', '')}}"
-        combo_dir = os.path.join(job_dir, combo_name)
-        os.makedirs(combo_dir, exist_ok=True)
-        combo["output_dir"] = combo_dir
-        combo["combo_name"] = combo_name
+        if combo["combo_name"] in completed_combos and is_combination_complete(combo["output_dir"]):
+            skipped_count += 1
+            print(f"✓ Skipping: {{combo['combo_name']}}")
+        else:
+            combinations_to_process.append(combo)
     
+    if skipped_count > 0:
+        print(f"\\n✓ Skipped {{skipped_count}} completed combination(s)")
+        print(f"⇄ Processing {{len(combinations_to_process)}} remaining combination(s)\\n")
+    
+    # ========================================================================
+    # If all done, just re-aggregate
+    # ========================================================================
+    if len(combinations_to_process) == 0:
+        print("\\n" + "="*80)
+        print(" ALL COMBINATIONS ALREADY COMPLETED!")
+        print("="*80)
+        print("⇄ Re-running aggregation...\\n")
+        aggregate_plip_results_v2(job_dir)
+        print(f"\\n✓ Aggregation complete!")
+        print(f"🗁 {{job_dir}}\\n")
+        return
+    
+    # ========================================================================
     # Execute combinations in parallel
-    print(f" Processing {{len(matched_combinations)}} combination(s) in parallel...")
+    # ========================================================================
+    print(f" Processing {{len(combinations_to_process)}} combination(s)")
     print(f"   Using {{MAX_WORKERS}} worker(s)\\n")
     
     start_time = time.time()
@@ -1362,7 +1723,7 @@ def main():
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_combo = {{
             executor.submit(execute_single_combination, combo, MAX_POSES): combo
-            for combo in matched_combinations
+            for combo in combinations_to_process
         }}
         
         for i, future in enumerate(as_completed(future_to_combo), 1):
@@ -1370,7 +1731,20 @@ def main():
             try:
                 result = future.result()
                 results.append(result)
-                print(f"[{{i}}/{{len(matched_combinations)}}] ✔ {{combo['combo_name']}}")
+                
+                # Update master checkpoint
+                master_checkpoint = load_master_checkpoint(job_dir)
+                completed = master_checkpoint.get("completed_combinations", [])
+                if combo['combo_name'] not in completed:
+                    completed.append(combo['combo_name'])
+                
+                update_master_checkpoint(job_dir, {{
+                    "completed_combinations": completed
+                }})
+                
+                status_emoji = "🗁" if result.get("resumed_from_checkpoint") else "✓"
+                print(f"[{{i}}/{{len(combinations_to_process)}}] {{status_emoji}} {{combo['combo_name']}}")
+                
             except Exception as e:
                 error_info = {{
                     "combo_name": combo['combo_name'],
@@ -1379,51 +1753,69 @@ def main():
                     "error": str(e)
                 }}
                 failed.append(error_info)
-                print(f"[{{i}}/{{len(matched_combinations)}}] × {{combo['combo_name']}} - {{e}}")
+                
+                # Update failed list
+                master_checkpoint = load_master_checkpoint(job_dir)
+                failed_list = master_checkpoint.get("failed_combinations", [])
+                if not any(f.get('combo_name') == combo['combo_name'] for f in failed_list):
+                    failed_list.append(error_info)
+                
+                update_master_checkpoint(job_dir, {{
+                    "failed_combinations": failed_list
+                }})
+                
+                print(f"[{{i}}/{{len(combinations_to_process)}}] ✖ {{combo['combo_name']}} - {{e}}")
     
     elapsed_time = time.time() - start_time
-
-    print("\\n Aggregating PLIP results across dataset...")
     
+    # Mark job as complete
+    update_master_checkpoint(job_dir, {{
+        "status": "completed",
+        "completion_time": time.time(),
+        "elapsed_time": elapsed_time
+    }})
+
+    print("\\n ⇄ Aggregating PLIP results...")
     aggregate_plip_results_v2(job_dir)
+    
     # Final summary
+    total_successful = len(results) + skipped_count
+    
     print(f"\\n{{'='*80}}")
-    print(f"JOB COMPLETE!")
+    print(f" ✓ JOB COMPLETE!")
     print(f"{{'='*80}}")
-    print(f"  Job ID: {{job_id}}")
     print(f"  Job Directory: {{job_dir}}")
     print(f"  Total combinations: {{len(matched_combinations)}}")
-    print(f"  ✓ Successful: {{len(results)}}")
-    print(f"  × Failed: {{len(failed)}}")
-    print(f"  ⏱  Time: {{elapsed_time:.2f}}s")
-    print(f"{'='*80}")
+    print(f"  ✓ Successful: {{total_successful}}")
+    print(f"  ✖ Failed: {{len(failed)}}")
+    print(f"  ⏱ Time: {{elapsed_time:.2f}}s ({{elapsed_time/60:.1f}} min)")
+    
+    if skipped_count > 0:
+        print(f"\\n🗁 Checkpoint saved {{skipped_count}} combination(s) from reprocessing")
+    
+    print(f"{{'='*80}}")
     
     if failed:
-        print(f"\\n⚠️  Failed combinations:")
+        print(f"\\n⚠️ Failed combinations:")
         for f in failed:
             print(f"  - {{f['combo_name']}}: {{f['error']}}")
-        print()
     
     # Save final results
     final_results_path = os.path.join(job_dir, "final_results.json")
     final_results = {{
-        "job_id": job_id,
+        "job_id": master_checkpoint.get('job_id', 'unknown'),
         "job_directory": job_dir,
-        "start_time": start_time,
+        "start_time": master_checkpoint.get("start_time", start_time),
         "elapsed_time": elapsed_time,
         "total_combinations": len(matched_combinations),
-        "successful": len(results),
+        "successful": total_successful,
         "failed": len(failed),
         "configuration": {{
             "receptor_path": RECEPTOR_PATH,
             "ligand_path": LIGAND_PATH,
             "output_folder": OUTPUT_FOLDER,
             "max_poses": MAX_POSES,
-            "max_workers": MAX_WORKERS,
-            "remove_waters": REMOVE_WATERS,
-            "remove_ions": REMOVE_IONS,
-            "add_hydrogens": ADD_HYDROGENS,
-            "keep_hetero": KEEP_HETERO
+            "max_workers": MAX_WORKERS
         }},
         "results": results,
         "failed_combinations": failed
@@ -1432,21 +1824,9 @@ def main():
     with open(final_results_path, 'w') as f:
         json.dump(final_results, f, indent=2)
     
-    print(f"\\n Results saved to: {{final_results_path}}")
-    
-    # Print summary of output files
-    print(f"\\n Output Summary:")
-    total_csv = sum(len(pose.get('csv_files', [])) for r in results for pose in r.get('poses', []))
-    total_json = sum(len(pose.get('json_files', [])) for r in results for pose in r.get('poses', []))
-    total_png = sum(len(pose.get('png_files', [])) for r in results for pose in r.get('poses', []))
-    
-    print(f"  CSV files: {{total_csv}}")
-    print(f"  JSON files: {{total_json}}")
-    print(f"  PNG files: {{total_png}}")
-    
-    print(f"\\n ✔ Analysis complete! Check the job directory for all results.")
-    print(f"   {{job_dir}}\\n")
-    print("GENERATED BY: COMBI VS  FRAMEWORK 3.0")
+    print(f"\\n✓ Analysis complete!")
+    print(f"🗁 {{job_dir}}\\n")
+    print("GENERATED BY: COMBI VS FRAMEWORK 3.0\\n")
 
 if __name__ == "__main__":
     main()

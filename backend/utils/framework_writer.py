@@ -18,7 +18,7 @@ def generate_optimized_docking_script(
     return_as_text: bool = False
 ):
     # ✅ DEBUG: Print what function received
-    print(f"🔍 WRITER DEBUG: enable_plip = {enable_plip} (type: {type(enable_plip)})")
+    print(f" WRITER DEBUG: enable_plip = {enable_plip} (type: {type(enable_plip)})")
     
     CHUNK_SIZE = 1000 if chunk_mode == "yes" else 0
 
@@ -26,9 +26,9 @@ def generate_optimized_docking_script(
     plip_function = ""
     plip_call = ""
     
-    print(f"🔍 WRITER DEBUG: Checking if enable_plip is True...")
+    print(f" WRITER DEBUG: Checking if enable_plip is True...")
     if enable_plip:
-        print(f"🔍 WRITER DEBUG: YES - Adding PLIP code")
+        print(f" WRITER DEBUG: YES - Adding PLIP code")
         plip_globals = f"""
 ENABLE_PLIP = True
 PLIP_SCRIPT_PATH = "plip_analysis.py"
