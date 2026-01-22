@@ -226,6 +226,42 @@ def remove_smiles_from_pdb(pdb_path):
             os.remove(temp_path)
         return False
 
+def add_chain_ids_to_pdb(pdb_path):
+    """Add chain identifiers to PDB file"""
+    temp_path = pdb_path + ".tmp"
+    lines_modified = 0
+    
+    try:
+        with open(pdb_path, "r") as infile, open(temp_path, "w") as outfile:
+            for line in infile:
+                if line.startswith("ATOM  "):
+                    if len(line) > 21 and line[21] == ' ':
+                        modified_line = line[:21] + 'A' + line[22:]
+                        outfile.write(modified_line)
+                        lines_modified += 1
+                    else:
+                        outfile.write(line)
+                elif line.startswith("HETATM"):
+                    if len(line) > 21 and line[21] == ' ':
+                        modified_line = line[:21] + 'B' + line[22:]
+                        outfile.write(modified_line)
+                        lines_modified += 1
+                    else:
+                        outfile.write(line)
+                else:
+                    outfile.write(line)
+        
+        shutil.move(temp_path, pdb_path)
+        
+        if lines_modified > 0:
+            print(f"      ✓ Added chain IDs to {{lines_modified}} atoms")
+        
+        return True
+    except Exception as e:
+        print(f"      ⚠ Warning: Could not add chain IDs: {{e}}")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return False
 
 def split_pdbqt_models(src, out_dir):
     """Split multi-model PDBQT into individual pose files"""
@@ -330,7 +366,7 @@ def parse_plip_xml(xml_path, output_dir):
             for itype, interactions in interactions_by_type.items():
                 if not interactions:
                     continue
-                filename = f"{{{{itype.replace(' ', '_')}}}}.csv"
+                filename = f"{{itype.replace(' ', '_')}}.csv"
                 with open(os.path.join(output_dir, filename), 'w', newline='', encoding='utf-8') as f:
                     type_keys = sorted(set(k for d in interactions for k in d.keys()))
                     writer = csv.DictWriter(f, fieldnames=type_keys)
@@ -352,7 +388,7 @@ def parse_plip_xml(xml_path, output_dir):
                 if itype in skip_json_types:
                     continue
                 
-                filename = f"{{{{itype.replace(' ', '_')}}}}.json"
+                filename = f"{{itype.replace(' ', '_')}}.json"
                 with open(os.path.join(output_dir, filename), 'w') as f:
                     json.dump(interactions, f, indent=2)
 
@@ -694,45 +730,64 @@ def aggregate_plip_results_v2(job_dir):
     # Generate all summary files (same as before)
     print(" Generating summary files...")
     
-    # FILE 1: residue_summary.csv
+   # FILE 1: residue_summary.csv (WITH DYNAMIC LIGAND COLUMNS)
     print("  Creating residue_summary.csv...")
     residue_summary = []
+    max_ligands = 0  # Track maximum number of ligands any residue interacts with
+    
     for residue, type_counts in residue_stats.items():
         total_interactions = sum(type_counts.values())
-        ligands_with_residue = set()
+        ligands_with_residue = {{}}
+        
+        # Collect ligand contributions for this residue
         for ligand, residues in ligand_residue_matrix.items():
             if residue in residues:
-                ligands_with_residue.add(ligand)
+                ligand_total = sum(residues[residue].values())
+                ligands_with_residue[ligand] = ligand_total
         
         ligand_count = len(ligands_with_residue)
         ligand_coverage = (ligand_count / len(ligand_data)) * 100 if ligand_data else 0
         
-        residue_summary.append({{
+        # Sort ligands by contribution (all ligands, not just top 100)
+        sorted_ligands = sorted(
+            ligands_with_residue.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        
+        # Update max_ligands count
+        if ligand_count > max_ligands:
+            max_ligands = ligand_count
+        
+        # Build row with base columns
+        row = {{
             'Residue': residue,
             'Total_Interactions': total_interactions,
             'Ligand_Count': ligand_count,
             'Ligand_Coverage_%': round(ligand_coverage, 1),
-            'H-bond': type_counts.get('H-bond', 0),
-            'Salt-bridge': type_counts.get('Salt-bridge', 0),
-            'Pi-stack': type_counts.get('Pi-stack', 0),
-            'Hydrophobic': type_counts.get('Hydrophobic', 0),
-            'Pi-cation': type_counts.get('Pi-cation', 0),
-            'Halogen': type_counts.get('Halogen', 0),
-            'Water-bridge': type_counts.get('Water-bridge', 0),
-            'Metal': type_counts.get('Metal', 0),
-        }})
+        }}
+        
+        # Add ligand columns dynamically (Ligand_1, Ligand_2, etc.)
+        for idx, (ligand, count) in enumerate(sorted_ligands, 1):
+            row[f'Ligand_{{idx}}'] = ligand
+        
+        residue_summary.append(row)
     
     residue_summary.sort(key=lambda x: x['Total_Interactions'], reverse=True)
     
+    # Build fieldnames with dynamic ligand columns
+    fieldnames = ['Residue', 'Total_Interactions', 'Ligand_Count', 'Ligand_Coverage_%']
+    
+    # Add Ligand_1, Ligand_2, ..., Ligand_N columns
+    for i in range(1, max_ligands + 1):
+        fieldnames.append(f'Ligand_{{i}}')
+    
     summary_path = os.path.join(job_dir, 'residue_summary.csv')
     with open(summary_path, 'w', newline='', encoding='utf-8') as f:
-        fieldnames = ['Residue', 'Total_Interactions', 'Ligand_Count', 'Ligand_Coverage_%',
-                     'H-bond', 'Salt-bridge', 'Pi-stack', 'Hydrophobic', 
-                     'Pi-cation', 'Halogen', 'Water-bridge', 'Metal']
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(residue_summary)
-    print(f"  residue_summary.csv ({{len(residue_summary)}} residues)")
+    print(f"  residue_summary.csv ({{len(residue_summary)}} residues, max {{max_ligands}} ligands per residue)")
     
     # FILE 2: ligand_interaction_matrix_top100.csv
     print("  Creating ligand_interaction_matrix_top100.csv...")
@@ -828,78 +883,7 @@ def aggregate_plip_results_v2(job_dir):
         writer.writerows(ligand_summary_detailed)
     print(f" ligand_summary_with_top_residues.csv ({{len(ligand_summary_detailed)}} ligands)")
     
-    # FILE 4: interaction_type_breakdown.csv
-    print("  Creating interaction_type_breakdown.csv...")
-    type_breakdown = []
-    for itype, stats in interaction_type_stats.items():
-        total_count = stats['total_count']
-        ligand_count = len(stats['ligands'])
-        avg_per_ligand = total_count / ligand_count if ligand_count > 0 else 0
-        
-        most_common_res = max(stats['residues'].items(), key=lambda x: x[1]) if stats['residues'] else ('N/A', 0)
-        
-        type_breakdown.append({{
-            'Interaction_Type': itype,
-            'Total_Count': total_count,
-            'Ligand_Count': ligand_count,
-            'Avg_Per_Ligand': round(avg_per_ligand, 1),
-            'Most_Common_Residue': most_common_res[0],
-            'Residue_Count': most_common_res[1]
-        }})
-    
-    type_breakdown.sort(key=lambda x: x['Total_Count'], reverse=True)
-    
-    breakdown_path = os.path.join(job_dir, 'interaction_type_breakdown.csv')
-    with open(breakdown_path, 'w', newline='', encoding='utf-8') as f:
-        fieldnames = ['Interaction_Type', 'Total_Count', 'Ligand_Count', 'Avg_Per_Ligand', 
-                     'Most_Common_Residue', 'Residue_Count']
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(type_breakdown)
-    print(f"  interaction_type_breakdown.csv ({{len(type_breakdown)}} types)")
-    
-    # FILE 5: best_residue_per_ligand.csv
-    print("  Creating best_residue_per_ligand.csv...")
-    best_residue_data = []
-    for ligand, residue_data in ligand_residue_matrix.items():
-        best_residue = None
-        best_total = 0
-        best_type_counts = {{}}
-        
-        for residue, type_counts in residue_data.items():
-            total = sum(type_counts.values())
-            if total > best_total:
-                best_total = total
-                best_residue = residue
-                best_type_counts = type_counts
-        
-        if best_residue:
-            best_residue_data.append({{
-                'Ligand': ligand,
-                'Best_Residue': best_residue,
-                'Total_Interactions': best_total,
-                'H-bond': best_type_counts.get('H-bond', 0),
-                'Salt-bridge': best_type_counts.get('Salt-bridge', 0),
-                'Pi-stack': best_type_counts.get('Pi-stack', 0),
-                'Hydrophobic': best_type_counts.get('Hydrophobic', 0),
-                'Pi-cation': best_type_counts.get('Pi-cation', 0),
-                'Halogen': best_type_counts.get('Halogen', 0),
-                'Water-bridge': best_type_counts.get('Water-bridge', 0),
-                'Metal': best_type_counts.get('Metal', 0),
-            }})
-    
-    best_residue_data.sort(key=lambda x: x['Total_Interactions'], reverse=True)
-    
-    best_residue_path = os.path.join(job_dir, 'best_residue_per_ligand.csv')
-    with open(best_residue_path, 'w', newline='', encoding='utf-8') as f:
-        fieldnames = ['Ligand', 'Best_Residue', 'Total_Interactions', 'H-bond', 'Salt-bridge', 
-                     'Pi-stack', 'Hydrophobic', 'Pi-cation', 'Halogen', 'Water-bridge', 'Metal']
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(best_residue_data)
-    print(f"  best_residue_per_ligand.csv ({{len(best_residue_data)}} ligands)")
-    
-    # FILE 6: Generate poses_summary.csv and poses_interaction_matrix.csv in each combo folder
+    # FILE 4: Generate poses_summary.csv and poses_interaction_matrix.csv in each combo folder
     print("\\n  Creating per-combination pose files...")
     for combo_folder in combo_folders:
         combo_name = os.path.basename(combo_folder)
@@ -1025,7 +1009,7 @@ def aggregate_plip_results_v2(job_dir):
     print("\\n" + "="*80)
     print(" AGGREGATION COMPLETE!")
     print("="*80)
-    print(f"  Generated 5 global summary files")
+    print(f"  Generated 3 global summary files")
     print(f"  Generated pose files in {{len(combo_folders)}} combination folders")
     print(f"  🗁 Location: {{job_dir}}")
     print("="*80)
@@ -1370,6 +1354,8 @@ def execute_single_combination(combo, max_poses):
             # Remove SMILES from PDB
             print("      Cleaning SMILES from complex.pdb...")
             remove_smiles_from_pdb(complex_path)
+            print("      Adding chain IDs to complex.pdb...") 
+            add_chain_ids_to_pdb(complex_path)                 
 
             # Run PLIP
             plip_cmd = [
@@ -1380,10 +1366,16 @@ def execute_single_combination(combo, max_poses):
             safe_run(plip_cmd, cwd=pose_dir)
             xml_path = os.path.join(pose_dir, "report.xml")
             
+
             if os.path.exists(xml_path):
                 parse_plip_xml(xml_path, pose_dir)
-                print(f"      ✓ Pose {{i}} completed")
                 
+                # Delete merge PDBQT file to save disk space  
+                if os.path.exists(merge_path):                 
+                    os.remove(merge_path)                      
+                    print(f"     x  Deleted merge_{{i}}.pdbqt") 
+                
+                print(f"      ✓ Pose {{i}} completed")    
                 # ============================================================
                 # CHECKPOINT: Mark pose as completed
                 # ============================================================

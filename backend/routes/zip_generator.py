@@ -433,7 +433,8 @@ def extract_plip_functions(plip_script: str) -> str:
 
 def create_merged_script(vsframework_script: str, plip_script: str, 
                         receptor_folder: str, output_path: str,
-                        plip_max_poses: int, plip_max_workers: int) -> str:
+                        plip_max_poses: int, plip_max_workers: int,
+                        plip_analyze_top_hits_only: bool = False) -> str:
     """
     Merge PLIP into vsframework - PLIP at BOTTOM, uses docking paths
     """
@@ -446,6 +447,41 @@ def create_merged_script(vsframework_script: str, plip_script: str,
     
     # Rename main() to run_plip_analysis()
     plip_functions = plip_functions.replace('def main():', 'def run_plip_analysis():')
+
+    # Inject Top Hits Filtering Logic if enabled
+    if plip_analyze_top_hits_only:
+        filtering_code = """
+        # Separate receptors and ligands
+        receptor_files, ligand_files = separate_receptors_and_ligands(all_files)
+
+        # Filter ligands based on top_hits.csv if it exists
+        top_hits_path = os.path.join(LIGAND_PATH, "top_hits.csv")
+        if os.path.exists(top_hits_path):
+            print(f"\\n   Filtering ligands based on: {top_hits_path}")
+            try:
+                top_hit_filenames = set()
+                with open(top_hits_path, 'r') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if 'File' in row:
+                            top_hit_filenames.add(row['File'])
+                
+                if top_hit_filenames:
+                    filtered_ligands = [l for l in ligand_files if os.path.basename(l) in top_hit_filenames]
+                    print(f"   Filtered {len(ligand_files)} ligands down to {len(filtered_ligands)} top hits")
+                    ligand_files = filtered_ligands
+                else:
+                    print("  ⚠️  No 'File' column found in top_hits.csv, using all ligands")
+            except Exception as e:
+                print(f"  ⚠️  Error reading top_hits.csv: {e}, using all ligands")
+        else:
+            print(f"\\n  ℹ️  No top_hits.csv found at {top_hits_path}, processing all ligands")
+"""
+        # Replace the standard separation logic with the filtered one
+        plip_functions = plip_functions.replace(
+            '        # Separate receptors and ligands\n        receptor_files, ligand_files = separate_receptors_and_ligands(all_files)',
+            filtering_code
+        )
     
     # Remove PLIP's hardcoded config
     plip_functions = re.sub(
@@ -462,6 +498,7 @@ def create_merged_script(vsframework_script: str, plip_script: str,
 ENABLE_PLIP = True
 PLIP_MAX_POSES = {plip_max_poses}
 PLIP_MAX_WORKERS = {plip_max_workers}
+PLIP_ANALYZE_TOP_HITS_ONLY = {plip_analyze_top_hits_only}
 """
     timing_globals = """
 
@@ -649,6 +686,7 @@ async def generate_single_script(
     plip_remove_ions: bool = Form(False),
     plip_add_hydrogens: bool = Form(True),
     plip_keep_hetero: bool = Form(True),
+    plip_analyze_top_hits_only: str = Form("false"),
 ):
     """Generate vsframework.py with embedded PLIP"""
     
@@ -698,7 +736,8 @@ async def generate_single_script(
             receptor_folder,
             output_path,
             plip_max_poses,
-            plip_max_workers
+            plip_max_workers,
+            plip_analyze_top_hits_only.lower() == "true" if isinstance(plip_analyze_top_hits_only, str) else plip_analyze_top_hits_only
         )
         
         print(f"✅ Merged: {len(vsframework_script)} chars")
@@ -741,6 +780,7 @@ async def generate_scripts_zip(
     plip_remove_ions: str = Form("false"),
     plip_add_hydrogens: str = Form("true"),
     plip_keep_hetero: str = Form("true"),
+    plip_analyze_top_hits_only: str = Form("false"),
 ):
     # Convert strings to booleans
     enable_plip_bool = enable_plip.lower() == "true"
@@ -748,6 +788,7 @@ async def generate_scripts_zip(
     plip_remove_ions_bool = plip_remove_ions.lower() == "true"
     plip_add_hydrogens_bool = plip_add_hydrogens.lower() == "true"
     plip_keep_hetero_bool = plip_keep_hetero.lower() == "true"
+    plip_analyze_top_hits_only_bool = plip_analyze_top_hits_only.lower() == "true"
     
     """Generate ZIP with vsframework.py (+ PLIP if enabled) and README"""
     print(f"🔍 enable_plip = {enable_plip}")
@@ -799,7 +840,8 @@ async def generate_scripts_zip(
             receptor_folder,
             output_path,
             plip_max_poses,
-            plip_max_workers
+            plip_max_workers,
+            plip_analyze_top_hits_only.lower() == "true" if isinstance(plip_analyze_top_hits_only, str) else plip_analyze_top_hits_only
         )
         
         print(f"✅ Merged: {len(vsframework_script)} chars")
