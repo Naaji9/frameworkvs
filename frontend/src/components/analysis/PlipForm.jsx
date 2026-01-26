@@ -65,13 +65,13 @@ export default function PlipFormOnline() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // ============================================================================
-  // UI STATES
+  // UI STATES ALL
   // ============================================================================
   const [status, setStatus] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
-  
+ 
   const [selectedPosesFor3D, setSelectedPosesFor3D] = useState([]);
   const [show3DViewer, setShow3DViewer] = useState(false);
   const [is3DLibLoaded, setIs3DLibLoaded] = useState(false);
