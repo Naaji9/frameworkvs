@@ -78,7 +78,7 @@ export default function PlipFormOnline() {
   const viewerRefs = useRef({});
   const viewer3DSectionRef = useRef(null);
 
-  const SERVER_BACKEND = "http://127.0.0.1:8000";
+  const SERVER_BACKEND = "https://backend-strzdw.fly.dev";
 
   // ============================================================================
   // OUTPUT HISTORY
