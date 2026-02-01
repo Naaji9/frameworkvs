@@ -17,7 +17,7 @@ def generate_optimized_docking_script(
     save_path: str = "outputs/vsframework.py",
     return_as_text: bool = False
 ):
-    # ✅ DEBUG: Print what function received
+    #  DEBUG: Print what function received
     print(f" WRITER DEBUG: enable_plip = {enable_plip} (type: {type(enable_plip)})")
     
     CHUNK_SIZE = 1000 if chunk_mode == "yes" else 0
@@ -38,7 +38,7 @@ PLIP_SCRIPT_PATH = "plip_analysis.py"
 def run_plip_if_enabled():
     \"\"\"Automatically run PLIP analysis if enabled and script exists\"\"\"
     if not ENABLE_PLIP:
-        print("\\n⭐ PLIP analysis disabled, skipping...")
+        print("\\n PLIP analysis disabled, skipping...")
         return
     
     if not os.path.exists(PLIP_SCRIPT_PATH):
@@ -64,14 +64,14 @@ def run_plip_if_enabled():
         print("="*80)
     except subprocess.CalledProcessError as e:
         print("\\n" + "="*80)
-        print(f"✖️ PLIP analysis failed with error code: {e.returncode}")
+        print(f" X PLIP analysis failed with error code: {e.returncode}")
         print("="*80)
         print("⚠️  Don't worry - your docking results are safe!")
         print(f"    Check {output_path} for docking results.")
     except FileNotFoundError:
-        print("\\n✖️ Error: python3 not found. Please ensure Python 3 is installed.")
+        print("\\n X Error: python3 not found. Please ensure Python 3 is installed.")
     except Exception as e:
-        print(f"\\n✖️ Unexpected error during PLIP analysis: {e}")
+        print(f"\\n X Unexpected error during PLIP analysis: {e}")
         print("⚠️  Docking results are safe and available.")
 """
         plip_call = """
@@ -126,7 +126,7 @@ def fix_user_path(path: str, name: str) -> str:
             print(f" Fixed '{{part}}' → '{{match[0]}}'")
             current = os.path.join(current, match[0])
         else:
-            print(f"✖️ Cannot resolve '{{part}}' in '{{current}}'")
+            print(f"X Cannot resolve '{{part}}' in '{{current}}'")
             return candidate
 
     if " " in current:
@@ -224,7 +224,7 @@ def convert_to_pdbqt(path):
         print(f"✓ Converted: {{os.path.basename(path)}}")
         return out
     except subprocess.CalledProcessError as e:
-        print(f"✖️ Failed to convert {{os.path.basename(path)}}: {{e.stderr}}")
+        print(f" X Failed to convert {{os.path.basename(path)}}: {{e.stderr}}")
         return None
 
 def convert_all(paths):
@@ -263,7 +263,7 @@ def load_ligands(path):
     
     # Check if path exists
     if not os.path.exists(path):
-        print(f"✖️ ERROR: Ligand path does not exist: {{path}}")
+        print(f" X ERROR: Ligand path does not exist: {{path}}")
         return []
     
     # If it's a directory, return list of all supported files
@@ -284,7 +284,7 @@ def load_receptors(path):
     
     # Check if path exists
     if not os.path.exists(path):
-        print(f"✖️ ERROR: Receptor path does not exist: {{path}}")
+        print(f" X ERROR: Receptor path does not exist: {{path}}")
         return []
     
     # If it's a directory, return list of all supported files
@@ -314,10 +314,10 @@ receptors = convert_all(receptor_files)
 
 # Check if we have any ligands/receptors
 if not ligands:
-    print("\\n✖️ ERROR: No ligands to process. Exiting.")
+    print("\\n X ERROR: No ligands to process. Exiting.")
     exit(1)
 if not receptors:
-    print("\\n✖️ ERROR: No receptors to process. Exiting.")
+    print("\\n X ERROR: No receptors to process. Exiting.")
     exit(1)
 
 print(f"\\n  Ready to dock: {{len(ligands)}} ligands vs {{len(receptors)}} receptors")
@@ -395,12 +395,12 @@ def run_task(task, checkpoint_file, completed):
         else:
             with failed_counter.get_lock():
                 failed_counter.value += 1
-            print(f"✖️ Docking failed or output missing: {{label}}")
+            print(f" X Docking failed or output missing: {{label}}")
 
     except Exception as e:
         with failed_counter.get_lock():
             failed_counter.value += 1
-        print(f"✖️ Error: {{label}} - {{str(e)}}")
+        print(f" X Error: {{label}} - {{str(e)}}")
 
     finally:
         dur = time.time() - start
@@ -427,7 +427,7 @@ def extract_scores():
                             break
 
     if rows:
-        rows.sort(key=lambda x: float(x[1]))
+        rows.sort(key=lambda x: float(x[1])) 
 
         csv_path = os.path.join(output_path, "vina_scores.csv")
         with open(csv_path, "w", newline="") as f:

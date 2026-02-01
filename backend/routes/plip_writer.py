@@ -130,12 +130,12 @@ def check_dependencies():
             # Extract version from help text
             version_line = [line for line in result.stdout.split('\\n') if 'Version' in line]
             version = version_line[0].strip() if version_line else "installed"
-            print(f"  ✔️  PLIP found: {{version}}")
+            print(f"  ✓  PLIP found: {{version}}")
         else:
             missing.append("PLIP")
     except (FileNotFoundError, subprocess.TimeoutExpired):
         missing.append("PLIP")
-        print("  ✖️ PLIP not found")
+        print("  ✗ PLIP not found")
     
     # Check Open Babel
     try:
@@ -148,11 +148,11 @@ def check_dependencies():
             missing.append("Open Babel")
     except (FileNotFoundError, subprocess.TimeoutExpired):
         missing.append("Open Babel")
-        print("  ✖️ Open Babel not found")
+        print("  ✗ Open Babel not found")
     
     if missing:
         print("\\n" + "="*80)
-        print("✖️ MISSING DEPENDENCIES")
+        print("✗ MISSING DEPENDENCIES")
         print("="*80)
         print("\\nThe following dependencies are required but not found:")
         for dep in missing:
@@ -170,7 +170,7 @@ def check_dependencies():
         sys.exit(1)
     
     print("="*80)
-    print("✔️ All dependencies satisfied!\\n")
+    print("✓ All dependencies satisfied!\\n")
 
 
 
@@ -1205,7 +1205,7 @@ def get_all_pdbqt_files(path):
                 print(f"  ⚠️  No PDB/PDBQT files found in {{path}} or its subdirectories")
             return sorted(files)
         except Exception as e:
-            print(f"  ✖️ ERROR reading directory {{path}}: {{e}}")
+            print(f"  ✗ ERROR reading directory {{path}}: {{e}}")
             return []
     
     # Path doesn't exist - try parent directory
@@ -1224,9 +1224,9 @@ def get_all_pdbqt_files(path):
             print(f"   Found {{len(files)}} PDB/PDBQT file(s) in parent directory tree!")
             return sorted(files)
         else:
-            print(f"  ✖️ No PDB/PDBQT files found in parent directory tree")
+            print(f"  ✗ No PDB/PDBQT files found in parent directory tree")
     
-    print(f"  ✖️ ERROR: Could not find any valid files")
+    print(f"  ✗ ERROR: Could not find any valid files")
     return []
 
 # ============================================================================
@@ -1461,12 +1461,12 @@ def main():
     print("="*80)
     
     if not os.path.exists(RECEPTOR_PATH):
-        print(f"✖️ Receptor path does not exist: {{RECEPTOR_PATH}}")
+        print(f" ✗ Receptor path does not exist: {{RECEPTOR_PATH}}")
         sys.exit(1)
     print(f"  ✓ Receptor: {{RECEPTOR_PATH}}")
     
     if not os.path.exists(LIGAND_PATH):
-        print(f"✖️ Ligand path does not exist: {{LIGAND_PATH}}")
+        print(f" ✗ Ligand path does not exist: {{LIGAND_PATH}}")
         sys.exit(1)
     print(f"  ✓ Ligand: {{LIGAND_PATH}}")
     
@@ -1605,7 +1605,7 @@ def main():
         all_files = unique_files
         
         if not all_files:
-            print("✖️ No PDB/PDBQT files found")
+            print("✗ No PDB/PDBQT files found")
             sys.exit(1)
         
         # Separate receptors and ligands
@@ -1626,14 +1626,14 @@ def main():
         print("="*80)
         
         if not receptor_files or not ligand_files:
-            print("✖️ No receptor or ligand files found")
+            print("✗ No receptor or ligand files found")
             sys.exit(1)
         
         # Match receptors with ligands
         matched_combinations = match_receptors_to_ligands(receptor_files, ligand_files)
         
         if not matched_combinations:
-            print("✖️ No matching receptor-ligand pairs found!")
+            print(" ✗ No matching receptor-ligand pairs found!")
             sys.exit(1)
         
         # Create job directory
