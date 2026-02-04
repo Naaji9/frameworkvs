@@ -141,8 +141,27 @@ TOTAL_TASKS = None
 
 # === Checkpoint System ===
 def save_checkpoint(label, checkpoint_file):
-    with open(checkpoint_file, "a") as f:
-        f.write(label + "\\n")
+    checkpoint_dir = os.path.dirname(checkpoint_file)
+
+    completed = set()
+    if os.path.exists(checkpoint_file):
+        with open(checkpoint_file, "r") as f:
+            completed = set(line.strip() for line in f if line.strip())
+
+    completed.add(label)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        dir=checkpoint_dir,
+        delete=False
+    ) as tmp:
+        for item in sorted(completed):
+            tmp.write(item + "\n")
+        temp_name = tmp.name
+
+    
+    os.replace(temp_name, checkpoint_file)
+
 
 def load_checkpoint(checkpoint_file):
     if os.path.exists(checkpoint_file):
@@ -366,11 +385,64 @@ def generate_tasks(ligands, receptors):
     return tasks
 
 # === Task Runner ===
+# === Task Runner ===
 def run_task(task, checkpoint_file, completed):
     cmd, label, out_file = task
+
     if label in completed:
         print(f"✓ Skipping: {{label}}")
         return
+
+    attempts = 0
+    success = False
+
+    while attempts <= MAX_RETRIES and not success:
+        attempts += 1
+        start = time.time()
+
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True
+            )
+
+            log_lines = []
+            for line in process.stdout:
+                print(line, end="")
+                log_lines.append(line)
+
+            process.wait()
+
+            if process.returncode == 0 and os.path.exists(out_file):
+                log_path = os.path.splitext(out_file)[0] + "_log.txt"
+                with open(log_path, "w") as log_file:
+                    log_file.writelines(log_lines)
+
+                save_checkpoint(label, checkpoint_file)
+                success = True
+
+            else:
+                raise RuntimeError("Docking failed or output missing")
+
+        except Exception as e:
+            with print_lock:
+                print(
+                    f"✖️ Task {{label}} failed "
+                    f"(attempt {{attempts}}/{{MAX_RETRIES + 1}}): {{e}}"
+                )
+
+            if attempts > MAX_RETRIES:
+                with failed_counter.get_lock():
+                    failed_counter.value += 1
+                with print_lock:
+                    print(f"🔴 Giving up on task: {{label}}")
+
+        finally:
+            dur = time.time() - start
+            with print_lock:
+                print(f"⏱ {{label}} attempt {{attempts}} finished in {{dur:.2f}}s")
 
     start = time.time()
     with progress_counter.get_lock():

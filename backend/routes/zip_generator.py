@@ -649,7 +649,7 @@ def run_plip_if_enabled():
         '    extract_scores()\n    run_plip_if_enabled()'
     )
     
-    print(f"✅ Merge complete: {len(merged_script)} chars")
+    print(f" Merge complete: {len(merged_script)} chars")
     
     return merged_script
 
@@ -690,7 +690,7 @@ async def generate_single_script(
 ):
     """Generate vsframework.py with embedded PLIP"""
     
-    print(f"🔍 enable_plip = {enable_plip}")
+    print(f" enable_plip = {enable_plip}")
     
     # Generate base docking script (NO PLIP)
     vsframework_script = generate_optimized_docking_script(
@@ -710,11 +710,11 @@ async def generate_single_script(
         return_as_text=True
     )
     
-    print(f"✅ Base script: {len(vsframework_script)} chars")
+    print(f" Base script: {len(vsframework_script)} chars")
     
     # Merge PLIP if enabled
     if enable_plip:
-        print("🔬 Merging PLIP...")
+        print(" Merging PLIP...")
         
         plip_output_path = os.path.join(os.path.dirname(output_path.rstrip('/')), 'plip_analysis')
         
@@ -740,7 +740,7 @@ async def generate_single_script(
             plip_analyze_top_hits_only.lower() == "true" if isinstance(plip_analyze_top_hits_only, str) else plip_analyze_top_hits_only
         )
         
-        print(f"✅ Merged: {len(vsframework_script)} chars")
+        print(f" Merged: {len(vsframework_script)} chars")
     
     return Response(
         content=vsframework_script,
@@ -791,10 +791,10 @@ async def generate_scripts_zip(
     plip_analyze_top_hits_only_bool = plip_analyze_top_hits_only.lower() == "true"
     
     """Generate ZIP with vsframework.py (+ PLIP if enabled) and README"""
-    print(f"🔍 enable_plip = {enable_plip}")
+    print(f" enable_plip = {enable_plip}")
     
     
-    print(f"🔍 enable_plip = {enable_plip}")
+    print(f" enable_plip = {enable_plip}")
     
     # Generate base docking script (NO PLIP)
     vsframework_script = generate_optimized_docking_script(
@@ -814,11 +814,11 @@ async def generate_scripts_zip(
         return_as_text=True
     )
     
-    print(f"✅ Base script: {len(vsframework_script)} chars")
+    print(f" Base script: {len(vsframework_script)} chars")
     
     # Merge PLIP if enabled
     if enable_plip:
-        print("🔬 Merging PLIP...")
+        print(" Merging PLIP...")
         
         plip_output_path = os.path.join(os.path.dirname(output_path.rstrip('/')), 'plip_analysis')
         
@@ -844,7 +844,7 @@ async def generate_scripts_zip(
             plip_analyze_top_hits_only.lower() == "true" if isinstance(plip_analyze_top_hits_only, str) else plip_analyze_top_hits_only
         )
         
-        print(f"✅ Merged: {len(vsframework_script)} chars")
+        print(f" Merged: {len(vsframework_script)} chars")
     
     # Generate README
     readme_content = generate_readme(enable_plip)
@@ -858,7 +858,7 @@ async def generate_scripts_zip(
     
     zip_buffer.seek(0)
     
-    print("📦 ZIP created")
+    print(" ZIP created")
     
     return StreamingResponse(
         zip_buffer,
